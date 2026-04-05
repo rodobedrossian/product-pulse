@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { apiFetch } from '../api.js'
+import { getAppOrigin } from '../lib/publicEnv.js'
 
-const BASE_URL = import.meta.env.VITE_APP_URL || window.location.origin
+const BASE_URL = getAppOrigin()
 
 export default function Onboarding() {
   const [step, setStep] = useState(1)

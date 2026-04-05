@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api.js'
+import { getApiBase } from '../lib/publicEnv.js'
 
 function formatMs(ms) {
   if (ms == null) return '—'
@@ -11,7 +12,7 @@ function formatMs(ms) {
   return `${m}m ${s}s`
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || ''
+const API_BASE = getApiBase()
 
 function ScreenshotLightbox({ src, onClose }) {
   useEffect(() => {

@@ -1,6 +1,5 @@
 import { supabase } from './lib/supabase.js'
-
-const BASE = import.meta.env.VITE_API_URL || ''
+import { getApiBase } from './lib/publicEnv.js'
 
 export async function apiFetch(path, options = {}) {
   const { timeoutMs = 25000, signal: outerSignal, accessToken: accessTokenOpt, ...fetchRest } =
@@ -19,8 +18,11 @@ export async function apiFetch(path, options = {}) {
       ? AbortSignal.any([outerSignal, timeoutCtrl.signal])
       : outerSignal || timeoutCtrl.signal
 
+  const base = getApiBase()
+  const url = base ? `${base}${path}` : path
+
   try {
-    const res = await fetch(BASE + path, {
+    const res = await fetch(url, {
       ...fetchRest,
       signal,
       headers: {

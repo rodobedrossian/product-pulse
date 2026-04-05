@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { apiFetch } from '../api.js'
+import { getAppOrigin } from '../lib/publicEnv.js'
 
-const BASE_URL = import.meta.env.VITE_APP_URL || window.location.origin
+const BASE_URL = getAppOrigin()
 
 const ROLE_OPTIONS = [
   'Product Designer',

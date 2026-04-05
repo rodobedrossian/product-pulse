@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { apiFetch } from '../api.js'
+import { getApiBase } from '../lib/publicEnv.js'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API_URL = getApiBase() || 'http://localhost:3001'
 
 function pathnameFromUrl(url) {
   try {
