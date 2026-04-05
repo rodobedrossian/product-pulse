@@ -1,6 +1,5 @@
 import 'dotenv/config'
 import express from 'express'
-import cors from 'cors'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import testsRouter from './routes/tests.js'
@@ -15,8 +14,18 @@ const PORT = process.env.PORT || 3001
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// CORS open on all origins — snippet can run on any prototype domain
-app.use(cors())
+// CORS: explicit headers + OPTIONS preflight. Browsers send OPTIONS before PATCH with Authorization;
+// some proxies/edges are picky — this must run before any body parsers or routers.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  res.setHeader('Access-Control-Max-Age', '86400')
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end()
+  }
+  next()
+})
 
 // Serve the snippet as a static file
 app.use('/snippet', express.static(join(__dirname, '../../snippet')))
@@ -33,6 +42,6 @@ app.use('/api', replayRouter)
 app.use('/api', screenshotRouter)
 app.use('/api', teamsRouter)
 
-app.listen(PORT, () => {
-  console.log(`Product Pulse API running on http://localhost:${PORT}`)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Product Pulse API listening on 0.0.0.0:${PORT}`)
 })

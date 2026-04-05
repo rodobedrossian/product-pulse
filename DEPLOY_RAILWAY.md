@@ -82,7 +82,7 @@ Point your DNS at Railway for both services and update:
 |-------|----------------|
 | Dashboard blank / API errors | `VITE_API_URL` must be the **public** Railway API URL, `https://`, no trailing slash. |
 | Auth redirect loop | Supabase **Redirect URLs** must include the exact dashboard origin. |
-| CORS | API uses open `cors()`; if problems persist, confirm the browser calls the URL you set in `VITE_API_URL`. |
+| CORS | API sets `Access-Control-Allow-Origin: *` and handles `OPTIONS` preflight for `PATCH` + `Authorization`. Redeploy API after changes. |
 | Snippet 404 | API service must deploy from repo with `snippet/` present (full Git clone + root `api/`). |
 
 ### `zsh: permission denied: api/.env`
