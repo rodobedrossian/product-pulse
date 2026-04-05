@@ -1476,6 +1476,14 @@ button.pp-btn-sm.pp-btn-delete-icon {
   background: var(--color-accent);
 }
 
+.pp-onboarding-footer {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: center;
+}
+
 /* ─── Invite link block ───────────────────────────────────────────────────────── */
 .pp-invite-block {
   display: flex;

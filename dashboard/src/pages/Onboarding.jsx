@@ -15,8 +15,13 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const { refreshProfile } = useAuth()
+  const { refreshProfile, signOut } = useAuth()
   const navigate = useNavigate()
+
+  async function handleSignOut() {
+    await signOut()
+    navigate('/auth', { replace: true })
+  }
 
   async function handleStep1(e) {
     e.preventDefault()
@@ -186,6 +191,12 @@ export default function Onboarding() {
             </button>
           </div>
         )}
+
+        <div className="pp-onboarding-footer">
+          <button type="button" className="pp-btn-text" onClick={handleSignOut}>
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   )
