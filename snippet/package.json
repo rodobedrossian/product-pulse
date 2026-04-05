@@ -1,0 +1,16 @@
+{
+  "name": "product-pulse-snippet",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build-replay.mjs && node build-screenshot.mjs",
+    "build:replay": "node build-replay.mjs",
+    "build:screenshot": "node build-screenshot.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "html2canvas": "^1.4.1",
+    "rrweb": "2.0.0-alpha.20"
+  }
+}

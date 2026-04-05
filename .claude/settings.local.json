@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(curl -s http://localhost:3001/api/tests)",
+      "Bash(grep -oP '__ppStartReplay=function.{0,2000}' \"/Users/rodrigobedrossian/Product Pulse/snippet/replay-bundle.js\")",
+      "Bash(python3 -c \":*)",
+      "Bash(npm run:*)",
+      "Bash(node --check src/routes/tests.js src/routes/events.js src/routes/participants.js)",
+      "Bash(npx vite:*)",
+      "Bash(node build-replay.mjs)"
+    ]
+  }
+}
