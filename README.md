@@ -164,6 +164,8 @@ The output `snippet/replay-bundle.js` is committed and served at `/snippet/repla
 
 ## 7. Deploy
 
+**Railway (monorepo: API + dashboard from one GitHub repo):** see [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md).
+
 ### API → Railway or Render
 
 1. Push `api/` to a GitHub repo (or the monorepo root).
@@ -174,8 +176,12 @@ The output `snippet/replay-bundle.js` is committed and served at `/snippet/repla
 ### Dashboard → Vercel
 
 1. Set the **Root Directory** to `dashboard/`.
-2. Set environment variable: `VITE_API_URL=https://your-api-url.com`.
+2. Set environment variables: `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_URL` (see [dashboard/.env.example](dashboard/.env.example)).
 3. Build command: `npm run build` — Output directory: `dist`.
+
+### Dashboard → Railway
+
+Same env vars as Vercel; **Root Directory** `dashboard/`, build `npm run build`, start `npm start` (serves `dist` via `vite preview`). Details in [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md).
 
 ## API Reference
 
