@@ -175,7 +175,7 @@ function MCPChatMockup() {
         <span className="pp-mock-chat-title">product-pulse MCP · Claude</span>
       </div>
       <div className="pp-mock-chat-body">
-        <span className="pp-mock-chat-tool">list_tests + get_test_results</span>
+        <span className="pp-mock-chat-tool">MCP tools · agent → agent</span>
         <div className="pp-mock-msg-user">Summarize the checkout flow test</div>
         <div className="pp-mock-msg-ai">
           <strong>Checkout flow · 12 participants</strong>
@@ -235,29 +235,19 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Problem / Solution ── */}
+      {/* ── AI prototyping gap / per-prototype snippets ── */}
       <section className="pp-landing-section-sm pp-landing-stripe">
-        <div className="pp-landing-inner">
-          <div className="pp-landing-grid-3" style={{ marginBottom: '1.5rem' }}>
-            <div className="pp-problem-card">
-              <div className="pp-problem-card-icon">📋</div>
-              <h3>Surveys miss behaviour</h3>
-              <p>What users say and what they do are rarely the same. Self-reported feedback leaves the real friction hidden.</p>
-            </div>
-            <div className="pp-problem-card">
-              <div className="pp-problem-card-icon">🎥</div>
-              <h3>Screen recordings need moderation</h3>
-              <p>Scheduling sessions, facilitating, and watching hours of footage slows every research cycle down.</p>
-            </div>
-            <div className="pp-problem-card">
-              <div className="pp-problem-card-icon">🔧</div>
-              <h3>Analytics tools need dev setup</h3>
-              <p>Installing trackers on a Figma prototype requires engineering time you don't have mid-discovery.</p>
-            </div>
-          </div>
-          <div className="pp-problem-arrow">
-            <p>Product Pulse does all of it — from one shareable link, no dev needed</p>
-          </div>
+        <div className="pp-landing-inner" style={{ maxWidth: '52rem' }}>
+          <p className="pp-landing-kicker">Built for how you ship prototypes</p>
+          <h2 className="pp-landing-h2" style={{ marginBottom: '1rem' }}>
+            The missing piece in the AI prototyping stack is measurement
+          </h2>
+          <p className="pp-landing-lead" style={{ marginBottom: '1rem' }}>
+            Classic product analytics (the kind where you drop <strong>one snippet</strong> in your app and every page view rolls into one place) is built for <strong>one product in production</strong>. That model works great at scale. It breaks when you are iterating <strong>many prototypes in parallel</strong>—each from Lovable, v0, Cursor, or a static host—each with its own goal, funnel, and participant cohort.
+          </p>
+          <p className="pp-landing-lead" style={{ marginBottom: 0 }}>
+            Product Pulse gives you <strong>one snippet per prototype</strong>, tied to the test <em>you</em> define. Run as many tests as you have flows: paste the tag into whatever your AI tool generated, share participant links, and make decisions from <strong>real behaviour</strong>—clicks, time-to-goal, and replays—not guesswork.
+          </p>
         </div>
       </section>
 
@@ -334,17 +324,21 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── AI Insights ── */}
+      {/* ── AI Insights / MCP · agent-to-agent ── */}
       <section className="pp-landing-section pp-landing-dark">
         <div className="pp-landing-inner">
           <div className="pp-landing-grid-2">
             <div>
-              <p className="pp-landing-kicker-light">AI Insights</p>
+              <p className="pp-landing-kicker-light">AI Insights · MCP</p>
               <h2 className="pp-landing-h2" style={{ color: 'var(--color-landing-text)' }}>
-                Ask your data anything. Get answers in seconds.
+                Agent-to-agent infrastructure for your research data
               </h2>
               <p className="pp-landing-lead-light">
-                Connect Product Pulse to Claude Desktop, Cursor, or Windsurf via our MCP integration. Ask plain-English questions about your test results without digging through dashboards.
+                Product Pulse ships a <strong>Model Context Protocol</strong> server—first-class tools your assistant can call (<code className="pp-landing-code">list_tests</code>,{' '}
+                <code className="pp-landing-code">get_test_results</code>, summaries, and more). Connect it in <strong>Claude Desktop</strong>, <strong>Cursor</strong>, or any MCP-capable client: your AI can query structured test data directly—<strong>agent to agent</strong>—without exporting CSVs or copy-pasting screenshots into chat.
+              </p>
+              <p className="pp-landing-lead-light" style={{ marginBottom: '1.25rem' }}>
+                Same agentic idea as the rest of your stack: the tool that helps you build can also <strong>reason over how people used what you built</strong>.
               </p>
               <Link to="/features/ai-insights" className="pp-cta-link">
                 Learn more about AI Insights →
@@ -369,8 +363,10 @@ export default function Landing() {
           <div className="pp-how-steps">
             <div className="pp-how-step">
               <div className="pp-how-num">1</div>
-              <h3>Paste one snippet into your prototype</h3>
-              <p>Drop a single script tag into your Framer, Webflow, or coded prototype. That's it — no SDK, no config file, no backend.</p>
+              <h3>Add one snippet per prototype (or ask your AI to)</h3>
+              <p>
+                Each test gets its own lightweight script tag—so parallel prototypes stay separate in the data, unlike a single global tracker for your whole product. Drop it into Framer, Lovable, Webflow, or anything your AI codegen tool output. No SDK, no merge step.
+              </p>
             </div>
             <div className="pp-how-step">
               <div className="pp-how-num">2</div>

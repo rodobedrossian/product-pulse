@@ -2182,6 +2182,15 @@ select.pp-input {
   margin-bottom: 2rem;
 }
 
+.pp-landing-code {
+  font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-landing-text);
+}
+
 /* ── CTA row ── */
 .pp-landing-cta-row {
   display: flex;
