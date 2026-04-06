@@ -632,6 +632,17 @@
     fetch(API_URL + '/api/tests/' + testId + '/tasks')
       .then(function (r) { return r.json() })
       .then(function (data) {
+        // ── Single-goal: stop replay the moment the goal fires ──────────────
+        if (data.test_type === 'single' && data.goal_event && data.goal_event.type) {
+          _ppOnEvent = function (type, sel, url) {
+            if (clientMatchesGoal(type, sel, url, data.goal_event)) {
+              _ppOnEvent = null // unhook so it only fires once
+              if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
+            }
+          }
+          return
+        }
+
         if (data.test_type !== 'scenario') return
         steps = (data.steps || []).filter(function (s) { return s.task || s.title })
         if (!steps.length) return
