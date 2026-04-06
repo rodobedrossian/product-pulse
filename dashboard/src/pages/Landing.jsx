@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import LandingNav from '../components/LandingNav.jsx'
@@ -167,6 +167,86 @@ function FunnelMockup() {
   )
 }
 
+/** Logos for tools you might ship prototypes from — shuffled on each page load. */
+const PROTOTYPE_TOOL_LOGOS = [
+  {
+    id: 'v0',
+    name: 'v0',
+    src: 'https://www.athos-cap.com/wp-content/uploads/2024/09/v0_by_Vercel_logo.png',
+    alt: 'v0 by Vercel'
+  },
+  {
+    id: 'figma',
+    name: 'Figma',
+    src: 'https://upload.wikimedia.org/wikipedia/commons/3/33/Figma-logo.svg',
+    alt: 'Figma'
+  },
+  {
+    id: 'lovable',
+    name: 'Lovable',
+    src: 'https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/lovable-color.png',
+    alt: 'Lovable'
+  },
+  {
+    id: 'cursor',
+    name: 'Cursor',
+    src: 'https://cursor.com/marketing-static/_next/image?url=%2Fmarketing-static%2Fdownload%2Fapp-icon-3d-dark.png&w=3840&q=70&dpl=dpl_7yLz3c2Ur45gM7FhUhy1EmCqvBZV',
+    alt: 'Cursor'
+  },
+  {
+    id: 'claude',
+    name: 'Claude',
+    src: 'https://upload.wikimedia.org/wikipedia/commons/b/b0/Claude_AI_symbol.svg',
+    alt: 'Claude'
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini',
+    src: 'https://www.gstatic.com/bricks/image/me6u4lx8TR7uZxMdl7YC5WlyZC0P2y0LzMAYP3mICUJJz4x7eZ0AXWaXc3n9EPNxfvCoFc6Y3mmmGg.png',
+    alt: 'Google Gemini'
+  },
+  {
+    id: 'replit',
+    name: 'Replit',
+    src: 'https://www.reachcapital.com/wp-content/uploads/2022/05/Replit_logo.png',
+    alt: 'Replit'
+  },
+  {
+    id: 'bolt',
+    name: 'Bolt',
+    src: 'https://vectorseek.com/wp-content/uploads/2025/07/bolt-ai-logo-01.png',
+    alt: 'Bolt'
+  }
+]
+
+function shufflePrototypeLogos() {
+  const items = [...PROTOTYPE_TOOL_LOGOS]
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[items[i], items[j]] = [items[j], items[i]]
+  }
+  return items
+}
+
+function PrototypeToolsLogoGrid() {
+  const [logos] = useState(() => shufflePrototypeLogos())
+  return (
+    <div className="pp-landing-tool-logos" aria-label="Tools and platforms you can ship from">
+      {logos.map((logo) => (
+        <div key={logo.id} className="pp-landing-tool-logo" title={logo.name}>
+          <img
+            src={logo.src}
+            alt={logo.alt}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function MCPChatMockup() {
   return (
     <div className="pp-mock-chat">
@@ -237,17 +317,22 @@ export default function Landing() {
 
       {/* ── AI prototyping gap / per-prototype snippets ── */}
       <section className="pp-landing-section-sm pp-landing-stripe">
-        <div className="pp-landing-inner" style={{ maxWidth: '52rem' }}>
-          <p className="pp-landing-kicker">Built for how you ship prototypes</p>
-          <h2 className="pp-landing-h2" style={{ marginBottom: '1rem' }}>
-            The missing piece in the AI prototyping stack is measurement
-          </h2>
-          <p className="pp-landing-lead" style={{ marginBottom: '1rem' }}>
-            Classic product analytics (the kind where you drop <strong>one snippet</strong> in your app and every page view rolls into one place) is built for <strong>one product in production</strong>. That model works great at scale. It breaks when you are iterating <strong>many prototypes in parallel</strong>—each from Lovable, v0, Cursor, or a static host—each with its own goal, funnel, and participant cohort.
-          </p>
-          <p className="pp-landing-lead" style={{ marginBottom: 0 }}>
-            Product Pulse gives you <strong>one snippet per prototype</strong>, tied to the test <em>you</em> define. Run as many tests as you have flows: paste the tag into whatever your AI tool generated, share participant links, and make decisions from <strong>real behaviour</strong>—clicks, time-to-goal, and replays—not guesswork.
-          </p>
+        <div className="pp-landing-inner">
+          <div className="pp-landing-grid-2 pp-landing-prototype-tools-grid">
+            <div style={{ maxWidth: '40rem' }}>
+              <p className="pp-landing-kicker">Built for how you ship prototypes</p>
+              <h2 className="pp-landing-h2" style={{ marginBottom: '1rem' }}>
+                The missing piece in the AI prototyping stack is measurement
+              </h2>
+              <p className="pp-landing-lead" style={{ marginBottom: '1rem' }}>
+                Classic product analytics (the kind where you drop <strong>one snippet</strong> in your app and every page view rolls into one place) is built for <strong>one product in production</strong>. That model works great at scale. It breaks when you are iterating <strong>many prototypes in parallel</strong>—each from Lovable, v0, Cursor, or a static host—each with its own goal, funnel, and participant cohort.
+              </p>
+              <p className="pp-landing-lead" style={{ marginBottom: 0 }}>
+                Product Pulse gives you <strong>one snippet per prototype</strong>, tied to the test <em>you</em> define. Run as many tests as you have flows: paste the tag into whatever your AI tool generated, share participant links, and make decisions from <strong>real behaviour</strong>—clicks, time-to-goal, and replays—not guesswork.
+              </p>
+            </div>
+            <PrototypeToolsLogoGrid />
+          </div>
         </div>
       </section>
 
