@@ -148,6 +148,26 @@ router.post('/teams/invite', requireAuth, async (req, res) => {
   res.status(201).json({ invite_token: data.token })
 })
 
+// GET /api/teams/invite/:token — public: return team name + validity for landing page
+router.get('/teams/invite/:token', async (req, res) => {
+  const { token } = req.params
+
+  const { data: invite } = await adminDb
+    .from('team_invites')
+    .select('expires_at, teams(name)')
+    .eq('token', token)
+    .single()
+
+  if (!invite) return res.status(404).json({ valid: false, expired: false, team_name: null })
+
+  const expired = invite.expires_at && new Date(invite.expires_at) < new Date()
+  return res.json({
+    valid: !expired,
+    expired: !!expired,
+    team_name: invite.teams?.name ?? 'a team'
+  })
+})
+
 // POST /api/teams/join/:token — join a team via invite link
 router.post('/teams/join/:token', requireAuth, async (req, res) => {
   const { token } = req.params

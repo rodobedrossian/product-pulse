@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { apiFetch } from '../api.js'
 import { getAppOrigin } from '../lib/publicEnv.js'
@@ -17,6 +17,8 @@ export default function Onboarding() {
   const [error, setError] = useState(null)
   const { refreshProfile, signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const pendingJoin = location.state?.from?.startsWith?.('/join/') ? location.state.from : null
 
   async function handleSignOut() {
     await signOut()
@@ -32,6 +34,10 @@ export default function Onboarding() {
         method: 'PATCH',
         body: JSON.stringify({ full_name: fullName, role })
       })
+      if (pendingJoin) {
+        navigate(pendingJoin)
+        return
+      }
       setStep(2)
     } catch (err) {
       setError(err.message)
@@ -71,7 +77,7 @@ export default function Onboarding() {
       <div className="pp-onboarding-card">
         {/* Progress */}
         <div className="pp-onboarding-progress">
-          {[1, 2, 3].map((n) => (
+          {(pendingJoin ? [1] : [1, 2, 3]).map((n) => (
             <div key={n} className={`pp-ob-dot${step >= n ? ' is-done' : ''}${step === n ? ' is-active' : ''}`} />
           ))}
         </div>
@@ -79,7 +85,7 @@ export default function Onboarding() {
         {/* Step 1: Name + Role */}
         {step === 1 && (
           <form onSubmit={handleStep1}>
-            <p className="pp-kicker">Step 1 of 3</p>
+            <p className="pp-kicker">{pendingJoin ? 'Step 1 of 1' : 'Step 1 of 3'}</p>
             <h2 className="pp-page-title" style={{ marginBottom: '0.25rem' }}>Tell us about yourself</h2>
             <p className="pp-muted" style={{ marginBottom: '1.75rem' }}>This helps your team know who you are.</p>
 

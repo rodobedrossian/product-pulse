@@ -3,15 +3,15 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Auth() {
-  const [tab, setTab] = useState('signin')
+  const { signIn, signUp } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const from = location.state?.from || '/'
+  const [tab, setTab] = useState(location.state?.tab === 'signup' ? 'signup' : 'signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const { signIn, signUp } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const from = location.state?.from?.pathname || '/'
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -20,7 +20,7 @@ export default function Auth() {
     try {
       if (tab === 'signup') {
         await signUp(email, password)
-        navigate('/onboarding')
+        navigate('/onboarding', { state: { from } })
       } else {
         const { user } = await signIn(email, password)
         // Profile is loaded by AuthContext after sign in — navigate and let ProtectedRoute handle redirect
