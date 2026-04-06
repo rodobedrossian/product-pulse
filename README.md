@@ -183,6 +183,16 @@ The output `snippet/replay-bundle.js` is committed and served at `/snippet/repla
 
 Same env vars as Vercel; **Root Directory** `dashboard/`, build `npm run build`, start `npm start` (serves `dist` via `vite preview`). Details in [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md).
 
+## 8. Row Level Security (baseline)
+
+After other SQL migrations, run [api/migrations/005_rls_enable.sql](api/migrations/005_rls_enable.sql) in the Supabase SQL Editor. It enables **RLS** on all public app tables with **no permissive policies** for `anon` / `authenticated`, so direct PostgREST access is blocked while the **API and MCP** (service role) behave the same.
+
+**Verify after applying:** sign in on the dashboard, list/create tests, post events from a participant link, and use MCP tools (e.g. `list_tests`). Optional: a `SELECT` on `public.tests` using only the **anon** key via the REST API should not return rows.
+
+### Storage buckets
+
+Keep `session-replays` and `event-screenshots` **private**. The Node API uses the **service role** for Storage reads/writes; do not expose that key in the browser. If you add Storage RLS policies later, avoid granting `anon` broad `SELECT` on `storage.objects` for those buckets.
+
 ## API Reference
 
 | Method | Path | Description |

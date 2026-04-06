@@ -8,7 +8,12 @@
       "Bash(npm run:*)",
       "Bash(node --check src/routes/tests.js src/routes/events.js src/routes/participants.js)",
       "Bash(npx vite:*)",
-      "Bash(node build-replay.mjs)"
+      "Bash(node build-replay.mjs)",
+      "Bash(curl -s https://product-pulse-mcp.up.railway.app/health)",
+      "Bash(curl -s -X POST https://product-pulse-mcp.up.railway.app/mcp -H \"Content-Type: application/json\" -H \"Authorization: Bearer pp_mcp_85d25be11916e689793bb8e08395ca17665128622d613a3e2971727214ed916d\" -d '{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"method\"\":\"\"initialize\"\",\"\"params\"\":{\"\"protocolVersion\"\":\"\"2024-11-05\"\",\"\"capabilities\"\":{},\"\"clientInfo\"\":{\"\"name\"\":\"\"test\"\",\"\"version\"\":\"\"1.0\"\"}},\"\"id\"\":1}')",
+      "Bash(node --check src/auth.js)",
+      "Bash(node --check src/index.js)",
+      "Bash(node -e \":*)"
     ]
   }
 }

@@ -1,0 +1,12 @@
+-- Optional reference: Supabase Storage uses `storage.objects` policies, separate from table RLS.
+-- Private buckets (session-replays, event-screenshots) should not grant anonymous reads.
+--
+-- By default, new private buckets may need explicit policies only when you want authenticated
+-- users to upload from the client. Product Pulse uploads via the API with the service role,
+-- which bypasses Storage RLS — no policy is required for the current architecture.
+--
+-- If you ever enable policies that mention `anon`, ensure they do not allow listing or
+-- downloading objects without authentication. Review: Dashboard → Storage → Policies.
+
+-- Example (usually NOT needed for this project): revoke accidental public access
+-- ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;  -- often already enabled

@@ -6,7 +6,7 @@ export default function Auth() {
   const { signIn, signUp } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = location.state?.from || '/'
+  const from = location.state?.from || '/tests'
   const [tab, setTab] = useState(location.state?.tab === 'signup' ? 'signup' : 'signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

@@ -1,4 +1,4 @@
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import TestList from './pages/TestList.jsx'
@@ -11,6 +11,10 @@ import Onboarding from './pages/Onboarding.jsx'
 import JoinTeam from './pages/JoinTeam.jsx'
 import Settings from './pages/Settings.jsx'
 import Docs from './pages/Docs.jsx'
+import Landing from './pages/Landing.jsx'
+import FeatureSessionReplay from './pages/FeatureSessionReplay.jsx'
+import FeatureGoalTracking from './pages/FeatureGoalTracking.jsx'
+import FeatureAI from './pages/FeatureAI.jsx'
 
 function Shell() {
   const { pathname } = useLocation()
@@ -22,7 +26,7 @@ function Shell() {
   const settingsActive = pathname === '/settings'
   const testsActive =
     !settingsActive &&
-    (pathname === '/' || (pathname.startsWith('/tests/') && segment && segment !== 'new'))
+    (pathname === '/tests' || (pathname.startsWith('/tests/') && segment && segment !== 'new'))
 
   async function handleSignOut() {
     await signOut()
@@ -33,12 +37,12 @@ function Shell() {
     <div className="pp-shell">
       <header className="pp-header">
         <div className="pp-header-inner">
-          <Link to="/" className="pp-brand">
+          <Link to="/tests" className="pp-brand">
             <span className="pp-brand-name">Product Pulse</span>
             <span className="pp-brand-tagline">Prototype usability, measured</span>
           </Link>
           <nav className="pp-nav" aria-label="Main">
-            <Link to="/" className={testsActive && !isNew ? 'pp-nav-active' : undefined}>
+            <Link to="/tests" className={testsActive && !isNew ? 'pp-nav-active' : undefined}>
               Tests
             </Link>
             <Link to="/tests/new" className={isNew ? 'pp-nav-active' : undefined}>
@@ -63,7 +67,8 @@ function Shell() {
       </header>
       <main className="pp-main">
         <Routes>
-          <Route path="/" element={<TestList />} />
+          <Route index element={<Navigate to="/tests" replace />} />
+          <Route path="/tests" element={<TestList />} />
           <Route path="/tests/new" element={<CreateTest />} />
           <Route path="/tests/:id" element={<TestDetail />} />
           <Route path="/tests/:id/results" element={<TestResults />} />
@@ -80,6 +85,10 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/features/session-replay" element={<FeatureSessionReplay />} />
+        <Route path="/features/goal-tracking" element={<FeatureGoalTracking />} />
+        <Route path="/features/ai-insights" element={<FeatureAI />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/join/:token" element={<JoinTeam />} />
