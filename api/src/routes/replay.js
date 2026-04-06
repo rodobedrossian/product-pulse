@@ -96,27 +96,30 @@ router.get('/tests/:testId/replay/:tid', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'Replay recording is empty' })
   }
 
-  // Download all parts in order and merge event arrays
-  const allEvents = []
-  for (let i = 0; i < replay.chunk_count; i++) {
-    const key = storageKey(testId, tid, i)
-    const { data: fileData, error } = await adminDb.storage
-      .from(BUCKET)
-      .download(key)
+  // Download all parts in parallel, then merge in index order
+  const chunkResults = await Promise.all(
+    Array.from({ length: replay.chunk_count }, async (_, i) => {
+      const key = storageKey(testId, tid, i)
+      const { data: fileData, error } = await adminDb.storage
+        .from(BUCKET)
+        .download(key)
 
-    if (error || !fileData) {
-      console.error(`Failed to download chunk ${i} for ${tid}:`, error)
-      continue
-    }
+      if (error || !fileData) {
+        console.error(`Failed to download chunk ${i} for ${tid}:`, error)
+        return null
+      }
 
-    try {
-      const text = await fileData.text()
-      const chunkEvents = JSON.parse(text)
-      allEvents.push(...chunkEvents)
-    } catch (parseErr) {
-      console.error(`Failed to parse chunk ${i}:`, parseErr)
-    }
-  }
+      try {
+        const text = await fileData.text()
+        return JSON.parse(text)
+      } catch (parseErr) {
+        console.error(`Failed to parse chunk ${i}:`, parseErr)
+        return null
+      }
+    })
+  )
+
+  const allEvents = chunkResults.flatMap((chunk) => chunk ?? [])
 
   if (allEvents.length === 0) {
     return res.status(404).json({ error: 'Replay data could not be loaded' })

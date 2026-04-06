@@ -21,7 +21,7 @@ export default function SessionReplay() {
   const playerRef = useRef(null)
 
   useEffect(() => {
-    apiFetch(`/api/tests/${id}/replay/${tid}`)
+    apiFetch(`/api/tests/${id}/replay/${tid}`, { timeoutMs: 90000 })
       .then(setReplayData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
