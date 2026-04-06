@@ -1,0 +1,29 @@
+{
+  "_comment": "Add this to your Claude Desktop config at ~/Library/Application Support/Claude/claude_desktop_config.json",
+
+  "mcpServers": {
+
+    "product-pulse-local": {
+      "_comment": "stdio mode — local dev only. JWT expires ~1h.",
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/Product Pulse/mcp/src/index.js"],
+      "env": {
+        "SUPABASE_URL": "https://ymkioldnqamsxipxnude.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "your-service-role-key-here",
+        "SUPABASE_TOKEN": "paste-your-jwt-here",
+        "MCP_TRANSPORT": "stdio"
+      }
+    },
+
+    "product-pulse": {
+      "_comment": "HTTP mode — Railway deployment. Replace URL with your actual Railway domain.",
+      "type": "http",
+      "url": "https://product-pulse-mcp.up.railway.app/mcp",
+      "headers": {
+        "Authorization": "Bearer paste-your-jwt-here"
+      }
+    }
+
+  }
+}
