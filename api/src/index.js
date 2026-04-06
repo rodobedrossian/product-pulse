@@ -8,6 +8,7 @@ import eventsRouter from './routes/events.js'
 import replayRouter from './routes/replay.js'
 import screenshotRouter from './routes/event-screenshots.js'
 import teamsRouter from './routes/teams.js'
+import mcpTokensRouter from './routes/mcpTokens.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -41,6 +42,7 @@ app.use('/api/events', eventsRouter)
 app.use('/api', replayRouter)
 app.use('/api', screenshotRouter)
 app.use('/api', teamsRouter)
+app.use('/api/mcp', mcpTokensRouter)
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Product Pulse API listening on 0.0.0.0:${PORT}`)

@@ -4,6 +4,7 @@ import { apiFetch } from '../api.js'
 import { getAppOrigin } from '../lib/publicEnv.js'
 
 const BASE_URL = getAppOrigin()
+const MCP_URL = 'https://product-pulse-mcp.up.railway.app/mcp'
 
 const ROLE_OPTIONS = [
   'Product Designer',
@@ -32,6 +33,15 @@ export default function Settings() {
   const [teamError, setTeamError] = useState(null)
   const [inviteError, setInviteError] = useState(null)
 
+  // MCP tokens
+  const [mcpTokens, setMcpTokens] = useState([])
+  const [tokenName, setTokenName] = useState('')
+  const [generatingToken, setGeneratingToken] = useState(false)
+  const [tokenError, setTokenError] = useState(null)
+  const [newToken, setNewToken] = useState(null)   // shown in modal once, then cleared
+  const [copiedToken, setCopiedToken] = useState(false)
+  const [copiedConfig, setCopiedConfig] = useState(false)
+
   useEffect(() => {
     refreshTeam()
   }, [refreshTeam])
@@ -46,6 +56,19 @@ export default function Settings() {
   useEffect(() => {
     if (team?.name) setTeamName(team.name)
   }, [team])
+
+  // Load MCP tokens once on mount
+  useEffect(() => {
+    async function fetchTokens() {
+      try {
+        const data = await apiFetch('/api/mcp/tokens')
+        setMcpTokens(data.tokens || [])
+      } catch {
+        // silently ignore — non-critical on load
+      }
+    }
+    fetchTokens()
+  }, [])
 
   const inviteUrl = inviteToken ? `${BASE_URL}/join/${inviteToken}` : ''
 
@@ -126,6 +149,66 @@ export default function Settings() {
     await navigator.clipboard.writeText(inviteUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  // ── MCP token handlers ─────────────────────────────────────────────────────
+
+  async function handleGenerateToken(e) {
+    e.preventDefault()
+    setTokenError(null)
+    setGeneratingToken(true)
+    try {
+      const data = await apiFetch('/api/mcp/tokens', {
+        method: 'POST',
+        body: JSON.stringify({ name: tokenName.trim() || 'Default' })
+      })
+      setNewToken(data)
+      setTokenName('')
+      // Refresh list
+      const list = await apiFetch('/api/mcp/tokens')
+      setMcpTokens(list.tokens || [])
+    } catch (err) {
+      setTokenError(err.message)
+    } finally {
+      setGeneratingToken(false)
+    }
+  }
+
+  async function handleRevokeToken(id) {
+    try {
+      await apiFetch(`/api/mcp/tokens/${id}`, { method: 'DELETE' })
+      setMcpTokens(prev => prev.filter(t => t.id !== id))
+    } catch (err) {
+      setTokenError(err.message)
+    }
+  }
+
+  async function handleCopyToken() {
+    if (!newToken?.token) return
+    await navigator.clipboard.writeText(newToken.token)
+    setCopiedToken(true)
+    setTimeout(() => setCopiedToken(false), 2000)
+  }
+
+  async function handleCopyConfig() {
+    if (!newToken?.token) return
+    const config = JSON.stringify({
+      mcpServers: {
+        'product-pulse': {
+          type: 'http',
+          url: MCP_URL,
+          headers: { Authorization: `Bearer ${newToken.token}` }
+        }
+      }
+    }, null, 2)
+    await navigator.clipboard.writeText(config)
+    setCopiedConfig(true)
+    setTimeout(() => setCopiedConfig(false), 2000)
+  }
+
+  function formatDate(iso) {
+    if (!iso) return 'Never'
+    return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
   return (
@@ -317,6 +400,78 @@ export default function Settings() {
             </button>
           </div>
 
+          {/* ── AI / MCP Access ──────────────────────────────────────────── */}
+          <div className="pp-card" style={{ padding: '1.35rem 1.5rem', marginBottom: '1.25rem' }}>
+            <h2 className="pp-page-title" style={{ fontSize: '1.15rem', marginBottom: '0.35rem' }}>
+              AI / MCP Access
+            </h2>
+            <p className="pp-muted" style={{ marginBottom: '1.25rem', fontSize: '0.9375rem' }}>
+              Generate long-lived tokens to connect AI tools like Claude Desktop or Cursor to your Product Pulse data.
+              Tokens are shown once — save them securely.
+            </p>
+
+            {tokenError && <p className="pp-auth-error" style={{ marginBottom: '1rem' }}>{tokenError}</p>}
+
+            <form onSubmit={handleGenerateToken} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+              <div className="pp-field" style={{ flex: '1 1 16rem', marginBottom: 0 }}>
+                <label className="pp-label" htmlFor="mcp-token-name">Token name <span className="pp-muted" style={{ fontWeight: 400 }}>(optional)</span></label>
+                <input
+                  id="mcp-token-name"
+                  type="text"
+                  className="pp-input"
+                  placeholder="e.g. Claude Desktop"
+                  value={tokenName}
+                  onChange={(e) => setTokenName(e.target.value)}
+                  maxLength={80}
+                />
+              </div>
+              <button type="submit" className="primary" disabled={generatingToken} style={{ flexShrink: 0 }}>
+                {generatingToken ? 'Generating…' : 'Generate token'}
+              </button>
+            </form>
+
+            {mcpTokens.length > 0 && (
+              <div>
+                <p className="pp-label" style={{ marginBottom: '0.5rem' }}>Active tokens</p>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {mcpTokens.map((t, i) => (
+                    <li
+                      key={t.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        padding: '0.65rem 0',
+                        borderBottom: i < mcpTokens.length - 1 ? '1px solid var(--color-border)' : 'none',
+                        flexWrap: 'wrap'
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                        <span style={{ fontWeight: 600 }}>{t.name || 'Unnamed token'}</span>
+                        <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>
+                          Created {formatDate(t.created_at)} · Last used {formatDate(t.last_used_at)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="secondary"
+                        style={{ fontSize: '0.875rem', padding: '0.3rem 0.75rem' }}
+                        onClick={() => handleRevokeToken(t.id)}
+                      >
+                        Revoke
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {mcpTokens.length === 0 && (
+              <p className="pp-muted" style={{ fontSize: '0.9rem' }}>No active tokens yet.</p>
+            )}
+          </div>
+
           <div className="pp-card" style={{ padding: '1.35rem 1.5rem' }}>
             <h2 className="pp-page-title" style={{ fontSize: '1.15rem', marginBottom: '0.35rem' }}>
               Teammates
@@ -357,6 +512,69 @@ export default function Settings() {
             )}
           </div>
         </>
+      )}
+
+      {/* ── New Token Modal ─────────────────────────────────────────────────── */}
+      {newToken && (
+        <div
+          className="pp-modal-backdrop"
+          onClick={() => { setNewToken(null); setCopiedToken(false); setCopiedConfig(false) }}
+        >
+          <div className="pp-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
+            <div className="pp-modal-head">
+              <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Your new MCP token</h2>
+            </div>
+            <div className="pp-modal-body">
+              <div
+                className="pp-auth-error"
+                style={{ background: 'var(--color-warning-bg, #fffbeb)', borderColor: 'var(--color-warning, #f59e0b)', color: 'var(--color-warning-text, #92400e)', marginBottom: '1.25rem', fontSize: '0.9rem' }}
+              >
+                Save this token now — it won't be shown again.
+              </div>
+
+              <p className="pp-label" style={{ marginBottom: '0.4rem' }}>Token</p>
+              <div className="pp-invite-url-row" style={{ marginBottom: '1.25rem' }}>
+                <pre className="pp-invite-url-code" tabIndex={0} style={{ fontSize: '0.8125rem', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
+                  {newToken.token}
+                </pre>
+                <button type="button" className="secondary pp-invite-copy" onClick={handleCopyToken}>
+                  {copiedToken ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+
+              <p className="pp-label" style={{ marginBottom: '0.4rem' }}>
+                Claude Desktop config <span className="pp-muted" style={{ fontWeight: 400 }}>(ready to paste)</span>
+              </p>
+              <div className="pp-invite-url-row" style={{ marginBottom: '1.5rem' }}>
+                <pre className="pp-invite-url-code" tabIndex={0} style={{ fontSize: '0.75rem', whiteSpace: 'pre' }}>
+{`{
+  "mcpServers": {
+    "product-pulse": {
+      "type": "http",
+      "url": "${MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${newToken.token}"
+      }
+    }
+  }
+}`}
+                </pre>
+                <button type="button" className="secondary pp-invite-copy" onClick={handleCopyConfig}>
+                  {copiedConfig ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="primary"
+                style={{ width: '100%' }}
+                onClick={() => { setNewToken(null); setCopiedToken(false); setCopiedConfig(false) }}
+              >
+                Done — I've saved the token
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
