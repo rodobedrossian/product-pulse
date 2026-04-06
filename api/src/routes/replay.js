@@ -80,6 +80,9 @@ router.post('/replay/complete', async (req, res) => {
   res.status(204).end()
 })
 
+const CHUNK_BATCH_SIZE = 20  // parallel downloads per batch — limits peak memory
+const MAX_CHUNKS = 150        // hard cap (~7.5 min at 3s flush interval)
+
 // GET /api/tests/:testId/replay/:tid — load and merge all chunks (protected)
 router.get('/tests/:testId/replay/:tid', requireAuth, async (req, res) => {
   const { testId, tid } = req.params
@@ -92,34 +95,62 @@ router.get('/tests/:testId/replay/:tid', requireAuth, async (req, res) => {
     .single()
 
   if (!replay) return res.status(404).json({ error: 'No replay found for this participant' })
-  if (replay.chunk_count === 0) {
-    return res.status(404).json({ error: 'Replay recording is empty' })
+
+  // List actual files in storage — avoids "Object not found" when chunk_count is
+  // ahead of what was successfully uploaded (e.g. last chunk upload failed).
+  const { data: files, error: listError } = await adminDb.storage
+    .from(BUCKET)
+    .list(`${testId}/${tid}`, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+
+  if (listError || !files?.length) {
+    return res.status(404).json({ error: 'Replay recording is empty or could not be listed' })
   }
 
-  // Download all parts in parallel, then merge in index order
-  const chunkResults = await Promise.all(
-    Array.from({ length: replay.chunk_count }, async (_, i) => {
-      const key = storageKey(testId, tid, i)
-      const { data: fileData, error } = await adminDb.storage
-        .from(BUCKET)
-        .download(key)
+  const chunkFiles = files
+    .filter(f => /^part_\d+\.json$/.test(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, MAX_CHUNKS)
 
-      if (error || !fileData) {
-        console.error(`Failed to download chunk ${i} for ${tid}:`, error)
-        return null
-      }
+  if (chunkFiles.length === 0) {
+    return res.status(404).json({ error: 'No replay chunks found' })
+  }
 
-      try {
-        const text = await fileData.text()
-        return JSON.parse(text)
-      } catch (parseErr) {
-        console.error(`Failed to parse chunk ${i}:`, parseErr)
-        return null
-      }
-    })
-  )
+  // Download in sequential batches to keep memory bounded.
+  // Each batch is parallel within itself; batches run one at a time.
+  const allEvents = []
 
-  const allEvents = chunkResults.flatMap((chunk) => chunk ?? [])
+  for (let i = 0; i < chunkFiles.length; i += CHUNK_BATCH_SIZE) {
+    const batch = chunkFiles.slice(i, i + CHUNK_BATCH_SIZE)
+
+    const results = await Promise.all(
+      batch.map(async (file) => {
+        const key = `${testId}/${tid}/${file.name}`
+        const { data: fileData, error } = await adminDb.storage
+          .from(BUCKET)
+          .download(key)
+
+        if (error || !fileData) {
+          console.error(`Failed to download ${file.name} for ${tid}:`, error)
+          return null
+        }
+
+        try {
+          const text = await fileData.text()
+          return JSON.parse(text)
+        } catch (parseErr) {
+          console.error(`Failed to parse ${file.name}:`, parseErr)
+          return null
+        }
+      })
+    )
+
+    for (const chunk of results) {
+      if (chunk) allEvents.push(...chunk)
+    }
+
+    // Yield to the event loop between batches so GC can run
+    await new Promise(resolve => setImmediate(resolve))
+  }
 
   if (allEvents.length === 0) {
     return res.status(404).json({ error: 'Replay data could not be loaded' })
@@ -128,11 +159,14 @@ router.get('/tests/:testId/replay/:tid', requireAuth, async (req, res) => {
   // Sort by timestamp to handle any out-of-order delivery
   allEvents.sort((a, b) => a.timestamp - b.timestamp)
 
+  const truncated = chunkFiles.length === MAX_CHUNKS && files.length > MAX_CHUNKS
+
   res.json({
     tid,
     test_id: testId,
     status: replay.status,
-    chunk_count: replay.chunk_count,
+    chunk_count: chunkFiles.length,
+    truncated,
     events: allEvents
   })
 })
