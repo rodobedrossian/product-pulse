@@ -55,7 +55,10 @@ router.get('/', requireAuth, async (req, res) => {
 // GET /api/tests/:id/snippet.js — project-specific snippet (public — runs on prototype domain)
 router.get('/:id/snippet.js', (req, res) => {
   const { id } = req.params
-  const apiUrl = `${req.protocol}://${req.get('host')}`
+  // Railway (and most proxies) terminate TLS and forward as HTTP internally.
+  // Use X-Forwarded-Proto to get the real external protocol.
+  const proto = req.get('x-forwarded-proto') || req.protocol
+  const apiUrl = `${proto}://${req.get('host')}`
   let source
   try {
     source = readFileSync(SNIPPET_PATH, 'utf8')
