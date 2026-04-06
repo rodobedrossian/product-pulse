@@ -1677,3 +1677,314 @@ select.pp-input {
   padding-right: 2.25rem;
   cursor: pointer;
 }
+
+/* ─── Docs portal ─────────────────────────────────────────────────────────────── */
+.pp-docs-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 2.5rem;
+  align-items: start;
+  padding-top: 1.5rem;
+}
+
+.pp-docs-sidebar {
+  position: sticky;
+  top: calc(var(--header-h, 56px) + 1.5rem);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  font-size: 0.875rem;
+}
+
+.pp-docs-sidebar p {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-muted);
+  margin: 0 0 0.5rem 0.75rem;
+}
+
+.pp-docs-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.pp-docs-sidebar a {
+  display: block;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+
+.pp-docs-sidebar a:hover {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.pp-docs-sidebar a.pp-docs-active {
+  background: #f5ebe9;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.pp-docs-content {
+  min-width: 0;
+  padding-bottom: 4rem;
+}
+
+.pp-docs-section {
+  padding-bottom: 3rem;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 3rem;
+  scroll-margin-top: calc(var(--header-h, 56px) + 1.5rem);
+}
+
+.pp-docs-section:last-child {
+  border-bottom: none;
+}
+
+.pp-docs-section h2 {
+  font-size: 1.45rem;
+  font-family: var(--font-display);
+  margin-bottom: 0.4rem;
+}
+
+.pp-docs-section h3 {
+  font-size: 1.05rem;
+  font-family: var(--font-display);
+  margin: 2rem 0 0.5rem;
+}
+
+.pp-docs-section p {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  margin-bottom: 0.85rem;
+}
+
+.pp-docs-section ul, .pp-docs-section ol {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  margin: 0 0 0.85rem 1.25rem;
+}
+
+.pp-docs-section li { margin-bottom: 0.25rem; }
+
+/* Code blocks */
+.pp-code-wrap {
+  position: relative;
+}
+
+.pp-code-block {
+  display: block;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  overflow-x: auto;
+  margin: 0.75rem 0 1rem;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  white-space: pre;
+}
+
+.pp-code-copy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  opacity: 0.7;
+  line-height: 1.5;
+}
+
+.pp-code-copy:hover { opacity: 1; }
+
+/* Method badges */
+.pp-method-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, monospace;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  flex-shrink: 0;
+}
+
+.pp-method-get    { background: #d1fae5; color: #065f46; }
+.pp-method-post   { background: #dbeafe; color: #1e40af; }
+.pp-method-patch  { background: #fef3c7; color: #92400e; }
+.pp-method-delete { background: #fee2e2; color: #991b1b; }
+
+/* Parameter tables */
+.pp-param-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  margin: 0.75rem 0 1.25rem;
+}
+
+.pp-param-table th {
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+  border-bottom: 2px solid var(--color-border);
+}
+
+.pp-param-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.pp-param-table tr:last-child td { border-bottom: none; }
+.pp-param-name { font-family: ui-monospace, monospace; font-size: 0.8125rem; }
+.pp-param-type { font-family: ui-monospace, monospace; font-size: 0.775rem; color: var(--color-muted); }
+.pp-param-required { color: var(--color-accent); font-size: 0.72rem; font-weight: 700; }
+.pp-param-optional { color: var(--color-muted); font-size: 0.72rem; }
+
+/* Endpoint cards */
+.pp-endpoint {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+  background: var(--color-surface);
+}
+
+.pp-endpoint-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pp-endpoint-desc {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.55;
+}
+
+/* MCP tool cards */
+.pp-tool-card {
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem;
+  background: var(--color-surface);
+}
+
+.pp-tool-name {
+  font-family: ui-monospace, monospace;
+  font-size: 0.975rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+
+.pp-tool-desc {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  line-height: 1.55;
+}
+
+/* Docs flow step bubbles */
+.pp-docs-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin: 1.25rem 0;
+}
+
+.pp-docs-step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.pp-docs-step-num {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.1rem;
+}
+
+.pp-docs-step-body strong {
+  display: block;
+  font-size: 0.9375rem;
+  margin-bottom: 0.2rem;
+}
+
+.pp-docs-step-body p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+/* Inline code */
+.pp-docs-section code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+  background: var(--color-border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
+/* Note / callout box */
+.pp-docs-note {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0.85rem 0;
+  color: #92400e;
+}
+
+.pp-docs-note strong { color: #78350f; }
+
+@media (max-width: 700px) {
+  .pp-docs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .pp-docs-sidebar {
+    position: static;
+    max-height: none;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .pp-docs-sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+}

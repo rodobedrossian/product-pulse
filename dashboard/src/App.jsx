@@ -10,6 +10,7 @@ import Auth from './pages/Auth.jsx'
 import Onboarding from './pages/Onboarding.jsx'
 import JoinTeam from './pages/JoinTeam.jsx'
 import Settings from './pages/Settings.jsx'
+import Docs from './pages/Docs.jsx'
 
 function Shell() {
   const { pathname } = useLocation()
@@ -17,6 +18,7 @@ function Shell() {
   const navigate = useNavigate()
   const segment = pathname.split('/')[2]
   const isNew = pathname === '/tests/new'
+  const docsActive = pathname === '/docs'
   const settingsActive = pathname === '/settings'
   const testsActive =
     !settingsActive &&
@@ -42,6 +44,9 @@ function Shell() {
             <Link to="/tests/new" className={isNew ? 'pp-nav-active' : undefined}>
               New test
             </Link>
+            <Link to="/docs" className={docsActive ? 'pp-nav-active' : undefined}>
+              Docs
+            </Link>
             <Link to="/settings" className={settingsActive ? 'pp-nav-active' : undefined}>
               Settings
             </Link>
@@ -64,6 +69,7 @@ function Shell() {
           <Route path="/tests/:id/results" element={<TestResults />} />
           <Route path="/tests/:id/replay/:tid" element={<SessionReplay />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/docs" element={<Docs />} />
         </Routes>
       </main>
     </div>
