@@ -2182,6 +2182,174 @@ select.pp-input {
   margin-bottom: 2rem;
 }
 
+.pp-landing-urgency {
+  font-size: 0.9375rem;
+  font-style: italic;
+  color: var(--color-landing-muted);
+  max-width: 52ch;
+  margin: -0.75rem 0 1.25rem;
+}
+
+.pp-landing-micro-trust {
+  font-size: 0.8125rem;
+  color: var(--color-landing-muted);
+  margin: 0.75rem 0 0;
+  max-width: 52ch;
+}
+
+.pp-landing-trust-strip {
+  background: var(--color-landing-bg);
+  color: var(--color-landing-text);
+  padding-block: 2.5rem 2rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pp-landing-trust-strip .pp-landing-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.pp-landing-trust-line {
+  text-align: center;
+  font-size: clamp(0.95rem, 1.5vw, 1.05rem);
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  max-width: 52rem;
+  margin: 0 auto;
+  padding-inline: 0.5rem;
+}
+
+/* Trust strip under hero: readable on dark bg, compact logo row (4×2), no huge white tiles */
+.pp-landing-trust-strip .pp-landing-trust-line {
+  font-size: clamp(1rem, 2vw, 1.125rem);
+  line-height: 1.5;
+  color: var(--color-landing-muted);
+  max-width: 38rem;
+  margin-bottom: 0.25rem;
+}
+
+.pp-landing-trust-strip .pp-landing-trust-line strong {
+  color: var(--color-landing-text);
+  font-weight: 600;
+}
+
+.pp-landing-trust-strip .pp-landing-tool-logos {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+  width: 100%;
+  max-width: min(100%, 30rem);
+  margin-inline: auto;
+  margin-top: 0.25rem;
+}
+
+/* Light tile behind each mark so dark wordmarks (v0, Bolt, Replit) stay readable on the dark strip */
+.pp-landing-trust-strip .pp-landing-tool-logo {
+  aspect-ratio: auto;
+  min-height: 0;
+  padding: 0.5rem 0.6rem;
+  background: #f2f0ec;
+  border: 1px solid rgba(20, 18, 16, 0.1);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.pp-landing-trust-strip .pp-landing-tool-logo:hover {
+  background: #faf8f5;
+  border-color: rgba(20, 18, 16, 0.14);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+}
+
+.pp-landing-trust-strip .pp-landing-tool-logo img {
+  width: 100%;
+  height: 2rem;
+  max-height: 2rem;
+  object-fit: contain;
+  object-position: center;
+}
+
+@media (max-width: 380px) {
+  .pp-landing-trust-strip .pp-landing-tool-logos {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .pp-landing-trust-strip .pp-landing-tool-logo {
+    padding: 0.4rem 0.35rem;
+  }
+
+  .pp-landing-trust-strip .pp-landing-tool-logo img {
+    height: 1.5rem;
+    max-height: 1.5rem;
+  }
+}
+
+.pp-landing-diff-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  font-size: clamp(0.95rem, 1.5vw, 1.05rem);
+}
+
+.pp-landing-diff-list li {
+  margin-bottom: 0.65rem;
+}
+
+.pp-landing-diff-list li:last-child {
+  margin-bottom: 0;
+}
+
+.pp-landing-use-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem 2.5rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-landing-use-cases li {
+  position: relative;
+  padding-left: 1.35rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.pp-landing-use-cases li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+@media (max-width: 600px) {
+  .pp-landing-use-cases {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pp-landing-speed-strip {
+  padding-block: 3rem;
+  text-align: center;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pp-landing-speed-strip .pp-landing-lead {
+  margin-inline: auto;
+  margin-bottom: 0;
+}
+
 .pp-landing-code {
   font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
   font-size: 0.9em;
@@ -3127,6 +3295,182 @@ select.pp-input {
   line-height: 1.4;
 }
 
+/* ── Trust / logo strip ── */
+.pp-landing-trust-strip {
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding-block: 2rem;
+}
+
+.pp-landing-trust-line {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+  margin: 0 0 1.25rem;
+  text-align: center;
+}
+
+.pp-landing-trust-line strong { color: var(--color-text-secondary); }
+
+.pp-landing-tool-logos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.pp-landing-tool-logo {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.55;
+  transition: opacity 0.2s;
+  filter: grayscale(1);
+}
+
+.pp-landing-tool-logo:hover {
+  opacity: 0.85;
+  filter: grayscale(0);
+}
+
+.pp-landing-tool-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ── Speed strip ── */
+.pp-landing-speed-strip {
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding-block: 2rem;
+}
+
+/* ── Urgency / micro-trust ── */
+.pp-landing-urgency {
+  font-size: 0.95rem;
+  font-style: italic;
+  color: var(--color-landing-muted);
+  margin: 0.75rem 0 1.5rem;
+  line-height: 1.5;
+}
+
+.pp-landing-micro-trust {
+  font-size: 0.82rem;
+  color: var(--color-landing-muted);
+  margin: 0.85rem 0 0;
+}
+
+/* ── Inline code ── */
+.pp-landing-code {
+  font-family: monospace;
+  font-size: 0.88em;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  color: var(--color-landing-text);
+}
+
+/* ── Differentiation list ── */
+.pp-landing-diff-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pp-landing-diff-list li {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.pp-landing-diff-list li strong { color: var(--color-text); }
+
+/* ── Use cases ── */
+.pp-landing-use-cases {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+  max-width: 760px;
+}
+
+.pp-landing-use-cases li {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.pp-landing-use-cases li::before {
+  content: '→';
+  color: var(--color-accent);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 0.05em;
+}
+
+.pp-landing-use-cases li em { color: var(--color-text); font-style: normal; font-weight: 600; }
+
+/* ── Compare callout ── */
+.pp-landing-compare-callout {
+  background: linear-gradient(135deg, rgba(201, 74, 60, 0.06), rgba(201, 74, 60, 0.02));
+  border: 1px solid rgba(201, 74, 60, 0.2);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.pp-landing-compare-callout strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--color-accent);
+  margin-bottom: 0.35rem;
+}
+
+.pp-landing-compare-callout p {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* ── Overlay callout (in scenarios section) ── */
+.pp-landing-overlay-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  color: var(--color-success);
+  line-height: 1.5;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .pp-landing-grid-2 {
@@ -3156,5 +3500,9 @@ select.pp-input {
 
   .pp-landing-final-cta {
     padding-block: 4rem;
+  }
+
+  .pp-landing-use-cases {
+    grid-template-columns: 1fr;
   }
 }

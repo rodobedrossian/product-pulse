@@ -23,7 +23,7 @@ export default function LandingNav() {
           ) : (
             <>
               <Link to="/auth" className="pp-btn-ghost">Sign in</Link>
-              <Link to="/auth" state={{ tab: 'signup' }} className="pp-btn-primary">Get started free</Link>
+              <Link to="/auth" state={{ tab: 'signup' }} className="pp-btn-primary">Test your prototype</Link>
             </>
           )}
         </div>

@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import LandingNav from '../components/LandingNav.jsx'
 
+const PRIMARY_CTA = 'Test your prototype'
+
 /* ── Coded mockup components ─────────────────────────────────────── */
 
 function DashboardMockup() {
@@ -256,13 +258,13 @@ function MCPChatMockup() {
       </div>
       <div className="pp-mock-chat-body">
         <span className="pp-mock-chat-tool">MCP tools · agent → agent</span>
-        <div className="pp-mock-msg-user">Summarize the checkout flow test</div>
+        <div className="pp-mock-msg-user">Where do users drop off in the checkout test?</div>
         <div className="pp-mock-msg-ai">
           <strong>Checkout flow · 12 participants</strong>
           <ul>
             <li>67% completion rate (8/12 reached purchase)</li>
             <li>Avg time to complete: 2m 14s</li>
-            <li>3 participants dropped off at "Enter details"</li>
+            <li>3 participants dropped off at &quot;Enter details&quot;</li>
             <li>1 participant abandoned at cart</li>
           </ul>
         </div>
@@ -287,26 +289,31 @@ export default function Landing() {
     <div className="pp-landing">
       <LandingNav />
 
-      {/* ── Hero ── */}
+      {/* Hero */}
       <section className="pp-landing-hero">
         <div className="pp-landing-inner">
           <div className="pp-landing-grid-2" style={{ gap: '3rem' }}>
             <div>
-              <p className="pp-landing-kicker-light">Prototype usability, measured</p>
+              <p className="pp-landing-kicker-light">Validation for AI-built prototypes</p>
               <h1 className="pp-landing-h1" style={{ color: 'var(--color-landing-text)' }}>
-                Know exactly how users experience your prototype
+                Test your AI-built prototype with real users
               </h1>
-              <p className="pp-landing-lead-light">
-                Share one link with participants. Product Pulse captures every click, scroll, and hesitation — and shows you exactly who got stuck and where.
+              <p className="pp-landing-lead-light" style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                Know what works. Fix what doesn&apos;t. Before you ship.
               </p>
+              <p className="pp-landing-lead-light">
+                Add one snippet to your prototype. Share a link. See where people click, stall, backtrack, or drop off—with session replay and goals tied to <em>this</em> test, not a global production dashboard.
+              </p>
+              <p className="pp-landing-urgency">You built it in a day. Know if it works before you rebuild it.</p>
               <div className="pp-landing-cta-row">
                 <Link to="/auth" state={{ tab: 'signup' }} className="pp-cta-primary">
-                  Start for free →
+                  {PRIMARY_CTA} →
                 </Link>
                 <a href="#how-it-works" className="pp-cta-secondary">
                   See how it works ↓
                 </a>
               </div>
+              <p className="pp-landing-micro-trust">No instrumentation. No engineering ticket. Free to start.</p>
             </div>
             <div>
               <DashboardMockup />
@@ -315,28 +322,72 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── AI prototyping gap / per-prototype snippets ── */}
-      <section className="pp-landing-section-sm pp-landing-stripe">
+      {/* Trust / tools */}
+      <section className="pp-landing-trust-strip" aria-label="Compatible tools">
         <div className="pp-landing-inner">
-          <div className="pp-landing-grid-2 pp-landing-prototype-tools-grid">
-            <div style={{ maxWidth: '40rem' }}>
-              <p className="pp-landing-kicker">Built for how you ship prototypes</p>
-              <h2 className="pp-landing-h2" style={{ marginBottom: '1rem' }}>
-                The missing piece in the AI prototyping stack is measurement
-              </h2>
-              <p className="pp-landing-lead" style={{ marginBottom: '1rem' }}>
-                Classic product analytics (the kind where you drop <strong>one snippet</strong> in your app and every page view rolls into one place) is built for <strong>one product in production</strong>. That model works great at scale. It breaks when you are iterating <strong>many prototypes in parallel</strong>—each from Lovable, v0, Cursor, or a static host—each with its own goal, funnel, and participant cohort.
-              </p>
-              <p className="pp-landing-lead" style={{ marginBottom: 0 }}>
-                Product Pulse gives you <strong>one snippet per prototype</strong>, tied to the test <em>you</em> define. Run as many tests as you have flows: paste the tag into whatever your AI tool generated, share participant links, and make decisions from <strong>real behaviour</strong>—clicks, time-to-goal, and replays—not guesswork.
+          <p className="pp-landing-trust-line">
+            Build with any AI tool. Paste one snippet. Test with real users.{' '}
+            <strong>Works with anything that outputs HTML you can host.</strong>
+          </p>
+          <PrototypeToolsLogoGrid />
+        </div>
+      </section>
+
+      {/* Blunt value */}
+      <section className="pp-landing-section-sm pp-landing-stripe">
+        <div className="pp-landing-inner" style={{ maxWidth: '44rem' }}>
+          <p className="pp-landing-kicker">The gap</p>
+          <h2 className="pp-landing-h2" style={{ marginBottom: '1rem' }}>
+            You&apos;re building faster than you can validate
+          </h2>
+          <p className="pp-landing-lead" style={{ marginBottom: '1rem' }}>
+            AI helps you ship prototypes in minutes. You still don&apos;t know if they <em>work</em> for real people.
+          </p>
+          <p className="pp-landing-lead" style={{ marginBottom: '1rem' }}>
+            Product Pulse turns any hosted prototype into a <strong>behavioral test</strong>: one lightweight snippet per prototype, participant links, and a dashboard for replays and completion—<strong>no moderated sessions required</strong> to get signal.
+          </p>
+          <p className="pp-landing-lead" style={{ marginBottom: 0 }}>
+            <strong>One snippet per prototype. One test per idea.</strong> Iterate in parallel without merging every experiment into a single production dataset.
+          </p>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="pp-landing-section" id="how-it-works">
+        <div className="pp-landing-inner">
+          <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+            <p className="pp-landing-kicker" style={{ justifySelf: 'center' }}>How it works</p>
+            <h2 className="pp-landing-h2" style={{ margin: '0 auto 0.5rem' }}>
+              From prototype to insights in minutes
+            </h2>
+          </div>
+          <div className="pp-how-steps">
+            <div className="pp-how-step">
+              <div className="pp-how-num">1</div>
+              <h3>Add the snippet</h3>
+              <p>
+                Paste Product Pulse&apos;s tag into your prototype (or ask your AI codegen tool to add it to the layout). Each test gets its own snippet so parallel prototypes stay separate in the data.
               </p>
             </div>
-            <PrototypeToolsLogoGrid />
+            <div className="pp-how-step">
+              <div className="pp-how-num">2</div>
+              <h3>Share a test link</h3>
+              <p>
+                Add participants and send each person their unique link. Sessions are tied to that person so you can replay and compare results cleanly.
+              </p>
+            </div>
+            <div className="pp-how-step">
+              <div className="pp-how-num">3</div>
+              <h3>See what happens</h3>
+              <p>
+                Watch replays, track goals and time-to-complete, and— for multi-step tests—see funnel drop-offs. Optionally ask your AI (via MCP) the same questions without CSV exports.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Session Replay ── */}
+      {/* Session replay */}
       <section className="pp-landing-section">
         <div className="pp-landing-inner">
           <div className="pp-landing-grid-2">
@@ -344,10 +395,10 @@ export default function Landing() {
               <ReplayMockup />
             </div>
             <div>
-              <p className="pp-landing-kicker">Session Replay</p>
-              <h2 className="pp-landing-h2">Watch exactly what happened. Moment by moment.</h2>
+              <p className="pp-landing-kicker">Session replay</p>
+              <h2 className="pp-landing-h2">See what users actually did</h2>
               <p className="pp-landing-lead">
-                Every session is captured automatically — clicks, navigations, and time spent on each screen. Replay any participant's session in full, scrub to any moment, and see what they actually did instead of what they said.
+                Not what they said they&apos;d do. Replay full sessions—clicks, navigations, and pacing—so you can see wrong turns, loops, and where people stall before they drop off.
               </p>
               <Link to="/features/session-replay" className="pp-cta-link">
                 Learn more about Session Replay →
@@ -357,15 +408,15 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Goal Tracking ── */}
+      {/* Goals */}
       <section className="pp-landing-section" style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
         <div className="pp-landing-inner">
           <div className="pp-landing-grid-2">
             <div>
-              <p className="pp-landing-kicker">Goal Tracking</p>
-              <h2 className="pp-landing-h2">Define success once. Measure it for everyone.</h2>
+              <p className="pp-landing-kicker">Goals</p>
+              <h2 className="pp-landing-h2">Define success visually</h2>
               <p className="pp-landing-lead">
-                Pick a goal element directly inside your prototype — no code, no selectors. Product Pulse automatically detects when each participant reaches it, and records exactly how long it took them to get there.
+                No tracking plan. No manual instrumentation. Click an element or match a URL inside your running prototype—that&apos;s your success definition. We track who reaches it and how long it took.
               </p>
               <Link to="/features/goal-tracking" className="pp-cta-link">
                 Learn more about Goal Tracking →
@@ -388,20 +439,24 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Scenario Testing ── */}
-      <section className="pp-landing-section">
+      {/* Scenarios */}
+      <section className="pp-landing-section" style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
         <div className="pp-landing-inner">
           <div className="pp-landing-grid-2">
             <div>
               <FunnelMockup />
             </div>
             <div>
-              <p className="pp-landing-kicker">Scenario Testing</p>
-              <h2 className="pp-landing-h2">Guide participants through a complete flow. See where they drop off.</h2>
+              <p className="pp-landing-kicker">Scenario tests</p>
+              <h2 className="pp-landing-h2">Test complete flows, step by step</h2>
               <p className="pp-landing-lead">
-                Create multi-step scenarios with task instructions that appear as an overlay inside the prototype. Product Pulse tracks progress through each step and shows you a live funnel — so you know exactly where people fall off.
+                Guide participants through ordered tasks with on-prototype instructions. Measure completion per step and see the funnel—so you know exactly where a flow breaks.
               </p>
-              <Link to="/features/goal-tracking" className="pp-cta-link">
+              <div className="pp-landing-overlay-note">
+                <span>💬</span>
+                <span>Task instructions appear as a floating card <em>inside</em> the prototype. No scheduling, no moderation calls—participants work through tasks on their own.</span>
+              </div>
+              <Link to="/features/goal-tracking" className="pp-cta-link" style={{ marginTop: '1.25rem', display: 'inline-flex' }}>
                 Learn more about Scenario Testing →
               </Link>
             </div>
@@ -409,21 +464,65 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── AI Insights / MCP · agent-to-agent ── */}
+      {/* Differentiation */}
+      <section className="pp-landing-section-sm pp-landing-stripe">
+        <div className="pp-landing-inner">
+          <div style={{ maxWidth: '40rem' }}>
+            <p className="pp-landing-kicker">Built for prototypes. Not production analytics.</p>
+            <h2 className="pp-landing-h2" style={{ marginBottom: '1rem' }}>
+              Most tools assume one product, one environment, one dataset
+            </h2>
+            <p className="pp-landing-lead" style={{ marginBottom: '1rem' }}>
+              You&apos;re running <strong>multiple prototypes</strong>, <strong>multiple tests</strong>, and <strong>constant iteration</strong>. Product Pulse matches that: separate tests, separate snippets, separate participant cohorts—without standing up a full analytics implementation for each throwaway URL.
+            </p>
+            <ul className="pp-landing-diff-list">
+              <li><strong>Hotjar / PostHog / Mixpanel</strong> — one snippet, all traffic from all users, aggregated into one dataset. Powerful for production. Wrong tool for a prototype you haven't shipped yet.</li>
+              <li><strong>Product Pulse</strong> — one snippet per prototype, tied to the specific test you defined, with named participants you invited. Built for parallel, throwaway URLs that don't live in production.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* Use cases */}
+      <section className="pp-landing-section">
+        <div className="pp-landing-inner">
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <p className="pp-landing-kicker" style={{ justifySelf: 'center' }}>Use cases</p>
+            <h2 className="pp-landing-h2" style={{ margin: '0 auto' }}>
+              Validate before you over-invest
+            </h2>
+          </div>
+          <ul className="pp-landing-use-cases">
+            <li>Test a landing page before you launch it</li>
+            <li>Validate onboarding flows with real behavior, not self-reported feedback</li>
+            <li>Find confusion <em>before</em> you commit backend or schema work</li>
+            <li>Run quick evals on AI-generated UI without a research ops team</li>
+            <li>Test a navigation redesign without touching your production codebase</li>
+            <li>Validate checkout or sign-up flows with a handful of real users first</li>
+          </ul>
+          <div className="pp-landing-compare-callout">
+            <strong>Running two ideas in parallel?</strong>
+            <p>Each prototype gets its own snippet and its own test — results stay completely separate. Compare side by side without merging everything into one dashboard.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* AI / MCP */}
       <section className="pp-landing-section pp-landing-dark">
         <div className="pp-landing-inner">
           <div className="pp-landing-grid-2">
             <div>
               <p className="pp-landing-kicker-light">AI Insights · MCP</p>
               <h2 className="pp-landing-h2" style={{ color: 'var(--color-landing-text)' }}>
-                Agent-to-agent infrastructure for your research data
+                Turn behavior into answers
               </h2>
               <p className="pp-landing-lead-light">
-                Product Pulse ships a <strong>Model Context Protocol</strong> server—first-class tools your assistant can call (<code className="pp-landing-code">list_tests</code>,{' '}
-                <code className="pp-landing-code">get_test_results</code>, summaries, and more). Connect it in <strong>Claude Desktop</strong>, <strong>Cursor</strong>, or any MCP-capable client: your AI can query structured test data directly—<strong>agent to agent</strong>—without exporting CSVs or copy-pasting screenshots into chat.
+                Use the dashboard for replays and metrics—then ask your AI assistant the follow-ups. Product Pulse exposes a <strong>Model Context Protocol</strong> server with first-class tools (
+                <code className="pp-landing-code">list_tests</code>,{' '}
+                <code className="pp-landing-code">get_test_results</code>, funnel summaries, and more) so <strong>Claude Desktop</strong>, <strong>Cursor</strong>, or any MCP client can pull structured test data—<strong>agent to agent</strong>.
               </p>
               <p className="pp-landing-lead-light" style={{ marginBottom: '1.25rem' }}>
-                Same agentic idea as the rest of your stack: the tool that helps you build can also <strong>reason over how people used what you built</strong>.
+                Skip CSV exports and screenshot archaeology. Same agentic stack you use to build can <strong>reason over how people used what you shipped</strong>.
               </p>
               <Link to="/features/ai-insights" className="pp-cta-link">
                 Learn more about AI Insights →
@@ -436,47 +535,28 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── How it works ── */}
-      <section className="pp-landing-section" id="how-it-works">
+      {/* Speed */}
+      <section className="pp-landing-speed-strip">
         <div className="pp-landing-inner">
-          <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-            <p className="pp-landing-kicker" style={{ justifySelf: 'center' }}>How it works</p>
-            <h2 className="pp-landing-h2" style={{ margin: '0 auto 0.5rem' }}>
-              From setup to insights in minutes
-            </h2>
-          </div>
-          <div className="pp-how-steps">
-            <div className="pp-how-step">
-              <div className="pp-how-num">1</div>
-              <h3>Add one snippet per prototype (or ask your AI to)</h3>
-              <p>
-                Each test gets its own lightweight script tag—so parallel prototypes stay separate in the data, unlike a single global tracker for your whole product. Drop it into Framer, Lovable, Webflow, or anything your AI codegen tool output. No SDK, no merge step.
-              </p>
-            </div>
-            <div className="pp-how-step">
-              <div className="pp-how-num">2</div>
-              <h3>Add participants and share their links</h3>
-              <p>Create a test, define your goal, add participant names. Each person gets a unique link that ties their session to their record.</p>
-            </div>
-            <div className="pp-how-step">
-              <div className="pp-how-num">3</div>
-              <h3>Watch results come in live</h3>
-              <p>Sessions appear in your dashboard as they happen. Replay any recording, check completion rates, and spot patterns across the whole group.</p>
-            </div>
-          </div>
+          <h2 className="pp-landing-h2" style={{ marginBottom: '0.5rem', fontSize: 'clamp(1.25rem, 2.5vw, 1.5rem)' }}>
+            Set up in minutes, not sprints
+          </h2>
+          <p className="pp-landing-lead" style={{ margin: 0, maxWidth: '40rem' }}>
+            No instrumentation plan. No ticket to engineering. No waiting for a tracking sprint to finish — paste one snippet, share participant links, watch behavior.
+          </p>
         </div>
       </section>
 
-      {/* ── Final CTA ── */}
+      {/* Final CTA */}
       <section className="pp-landing-dark">
         <div className="pp-landing-inner pp-landing-final-cta">
           <h2 className="pp-landing-h2" style={{ color: 'var(--color-landing-text)', margin: '0 auto 0.75rem' }}>
-            Ready to run your first test?
+            Ready to see if your prototype actually works?
           </h2>
-          <p>Set up in minutes. No credit card required.</p>
+          <p>Run your first test in minutes. No credit card required.</p>
           <div className="pp-landing-cta-row" style={{ justifyContent: 'center' }}>
             <Link to="/auth" state={{ tab: 'signup' }} className="pp-cta-primary">
-              Get started free
+              {PRIMARY_CTA} →
             </Link>
             <Link to="/auth" className="pp-cta-secondary">
               Already have an account? Sign in
@@ -485,12 +565,12 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Footer ── */}
+      {/* Footer */}
       <footer className="pp-landing-footer">
         <div className="pp-landing-footer-inner">
           <div>
             <div className="pp-landing-footer-brand">Product Pulse</div>
-            <div className="pp-landing-footer-tagline">Prototype usability, measured</div>
+            <div className="pp-landing-footer-tagline">Validation for AI-built prototypes</div>
           </div>
           <ul className="pp-landing-footer-links">
             <li><Link to="/features/session-replay">Session Replay</Link></li>

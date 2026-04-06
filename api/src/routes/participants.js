@@ -160,7 +160,13 @@ router.get('/:id/results', requireAuth, async (req, res) => {
       }
     })
 
-    return res.json({ test_id: id, test_type: 'scenario', funnel, results })
+    return res.json({
+      test_id: id,
+      test_type: 'scenario',
+      research_intent: test.research_intent ?? null,
+      funnel,
+      results
+    })
   }
 
   // ─── Single-goal results (existing logic) ─────────────────────────────────
@@ -240,7 +246,12 @@ router.get('/:id/results', requireAuth, async (req, res) => {
     }
   })
 
-  res.json({ test_id: id, test_type: 'single', results })
+  res.json({
+    test_id: id,
+    test_type: 'single',
+    research_intent: test.research_intent ?? null,
+    results
+  })
 })
 
 export default router

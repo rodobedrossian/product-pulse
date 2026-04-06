@@ -10,9 +10,17 @@ const SNIPPET_PATH = join(__dirname, '../../snippet/protopulse.js')
 
 const router = Router()
 
+const RESEARCH_INTENT_MAX = 2000
+
+function normalizeResearchIntent(value) {
+  if (value == null || value === '') return null
+  const s = String(value).trim().slice(0, RESEARCH_INTENT_MAX)
+  return s.length ? s : null
+}
+
 // POST /api/tests — create a new test
 router.post('/', requireAuth, async (req, res) => {
-  const { name, prototype_url, start_event, goal_event, test_type } = req.body
+  const { name, prototype_url, start_event, goal_event, test_type, research_intent } = req.body
 
   if (!name || !prototype_url) {
     return res.status(400).json({ error: 'Missing required fields: name, prototype_url' })
@@ -25,6 +33,7 @@ router.post('/', requireAuth, async (req, res) => {
       prototype_url,
       start_event: start_event ?? {},
       goal_event: goal_event ?? {},
+      research_intent: normalizeResearchIntent(research_intent),
       test_type: test_type === 'scenario' ? 'scenario' : 'single',
       team_id: req.teamId,
       created_by: req.user.id
@@ -124,12 +133,13 @@ router.get('/:id/heartbeat', async (req, res) => {
 // PATCH /api/tests/:id — partial update
 router.patch('/:id', requireAuth, async (req, res) => {
   const { id } = req.params
-  const { goal_event, start_event, name, prototype_url } = req.body
+  const { goal_event, start_event, name, prototype_url, research_intent } = req.body
   const updates = {}
   if (goal_event !== undefined) updates.goal_event = goal_event
   if (start_event !== undefined) updates.start_event = start_event
   if (name !== undefined) updates.name = name
   if (prototype_url !== undefined) updates.prototype_url = prototype_url
+  if (research_intent !== undefined) updates.research_intent = normalizeResearchIntent(research_intent)
   if (Object.keys(updates).length === 0)
     return res.status(400).json({ error: 'No fields to update' })
 

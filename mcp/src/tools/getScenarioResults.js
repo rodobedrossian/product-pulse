@@ -16,7 +16,7 @@ export function registerGetScenarioResults(server, db) {
       const t0 = Date.now()
       await validateTestOwnership(db, test_id)
 
-      const { data: test } = await db.tests('id, name, test_type')
+      const { data: test } = await db.tests('id, name, test_type, research_intent')
         .eq('id', test_id)
         .single()
 
@@ -45,7 +45,7 @@ export function registerGetScenarioResults(server, db) {
         log('get_scenario_results', db.teamId, Date.now() - t0)
         return {
           content: [{ type: 'text', text: JSON.stringify({
-            test_id, test_name: test.name, total_participants: 0,
+            test_id, test_name: test.name, research_intent: test.research_intent ?? null, total_participants: 0,
             funnel: steps.map(s => ({ ...s, completion_count: 0, completion_rate_pct: '0%', median_time_formatted: '—', drop_off_count: 0 })),
             participants: []
           }, null, 2) }]
@@ -113,6 +113,7 @@ export function registerGetScenarioResults(server, db) {
       const result = {
         test_id,
         test_name: test.name,
+        research_intent: test.research_intent ?? null,
         total_participants: totalParticipants,
         funnel,
         participants: participantBreakdown,

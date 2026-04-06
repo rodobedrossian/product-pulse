@@ -16,7 +16,7 @@ export function registerGetTestResults(server, db) {
       const t0 = Date.now()
       await validateTestOwnership(db, test_id)
 
-      const { data: test } = await db.tests('id, name, test_type, goal_event, start_event')
+      const { data: test } = await db.tests('id, name, test_type, goal_event, start_event, research_intent')
         .eq('id', test_id)
         .single()
 
@@ -36,6 +36,7 @@ export function registerGetTestResults(server, db) {
         return {
           content: [{ type: 'text', text: JSON.stringify({
             test_id, test_name: test.name, test_type: 'single',
+            research_intent: test.research_intent ?? null,
             total_participants: 0, completed_count: 0,
             completion_rate_pct: '0%', avg_time_formatted: '—',
             median_time_formatted: '—', participants: []
@@ -72,6 +73,7 @@ export function registerGetTestResults(server, db) {
         test_id,
         test_name: test.name,
         test_type: 'single',
+        research_intent: test.research_intent ?? null,
         total_participants: participants.length,
         completed_count: completedParticipants.length,
         completion_rate: rate,
