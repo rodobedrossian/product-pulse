@@ -3305,12 +3305,12 @@ select.pp-input {
 
 .pp-landing-trust-line {
   font-size: 0.875rem;
-  color: var(--color-muted);
-  margin: 0 0 1.25rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 1.5rem;
   text-align: center;
 }
 
-.pp-landing-trust-line strong { color: var(--color-text-secondary); }
+.pp-landing-trust-line strong { color: var(--color-text); }
 
 .pp-landing-tool-logos {
   display: flex;
@@ -3321,18 +3321,18 @@ select.pp-input {
 }
 
 .pp-landing-tool-logo {
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.55;
-  transition: opacity 0.2s;
-  filter: grayscale(1);
+  opacity: 0.72;
+  transition: opacity 0.2s, filter 0.2s;
+  filter: grayscale(0.6);
 }
 
 .pp-landing-tool-logo:hover {
-  opacity: 0.85;
+  opacity: 1;
   filter: grayscale(0);
 }
 
@@ -3342,12 +3342,29 @@ select.pp-input {
   object-fit: contain;
 }
 
-/* ── Speed strip ── */
-.pp-landing-speed-strip {
-  background: var(--color-bg);
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
-  padding-block: 2rem;
+/* ── CTA trust badges ── */
+.pp-landing-trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.pp-landing-trust-badge {
+  font-size: 0.8rem;
+  color: var(--color-landing-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pp-landing-trust-badge::before {
+  content: '✓';
+  color: var(--color-accent);
+  font-weight: 700;
+  font-size: 0.75rem;
 }
 
 /* ── Urgency / micro-trust ── */
@@ -3430,7 +3447,7 @@ select.pp-input {
   margin-top: 0.05em;
 }
 
-.pp-landing-use-cases li em { color: var(--color-text); font-style: normal; font-weight: 600; }
+.pp-landing-use-cases li em { color: var(--color-accent); font-style: normal; font-weight: 700; }
 
 /* ── Compare callout ── */
 .pp-landing-compare-callout {

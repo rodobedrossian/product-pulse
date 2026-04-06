@@ -495,7 +495,7 @@ export default function Landing() {
           <ul className="pp-landing-use-cases">
             <li>Test a landing page before you launch it</li>
             <li>Validate onboarding flows with real behavior, not self-reported feedback</li>
-            <li>Find confusion <em>before</em> you commit backend or schema work</li>
+            <li>Catch confusion before you commit backend or schema work</li>
             <li>Run quick evals on AI-generated UI without a research ops team</li>
             <li>Test a navigation redesign without touching your production codebase</li>
             <li>Validate checkout or sign-up flows with a handful of real users first</li>
@@ -535,32 +535,27 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Speed */}
-      <section className="pp-landing-speed-strip">
-        <div className="pp-landing-inner">
-          <h2 className="pp-landing-h2" style={{ marginBottom: '0.5rem', fontSize: 'clamp(1.25rem, 2.5vw, 1.5rem)' }}>
-            Set up in minutes, not sprints
-          </h2>
-          <p className="pp-landing-lead" style={{ margin: 0, maxWidth: '40rem' }}>
-            No instrumentation plan. No ticket to engineering. No waiting for a tracking sprint to finish — paste one snippet, share participant links, watch behavior.
-          </p>
-        </div>
-      </section>
-
       {/* Final CTA */}
       <section className="pp-landing-dark">
         <div className="pp-landing-inner pp-landing-final-cta">
           <h2 className="pp-landing-h2" style={{ color: 'var(--color-landing-text)', margin: '0 auto 0.75rem' }}>
             Ready to see if your prototype actually works?
           </h2>
-          <p>Run your first test in minutes. No credit card required.</p>
+          <p style={{ color: 'var(--color-landing-muted)', marginBottom: '1.75rem' }}>
+            Set up in minutes. No instrumentation plan. No engineering ticket.
+          </p>
           <div className="pp-landing-cta-row" style={{ justifyContent: 'center' }}>
             <Link to="/auth" state={{ tab: 'signup' }} className="pp-cta-primary">
               {PRIMARY_CTA} →
             </Link>
             <Link to="/auth" className="pp-cta-secondary">
-              Already have an account? Sign in
+              Sign in
             </Link>
+          </div>
+          <div className="pp-landing-trust-badges">
+            <span className="pp-landing-trust-badge">No credit card required</span>
+            <span className="pp-landing-trust-badge">Free to start</span>
+            <span className="pp-landing-trust-badge">Works with any hosted prototype</span>
           </div>
         </div>
       </section>
