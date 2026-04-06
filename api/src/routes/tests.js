@@ -6,7 +6,7 @@ import db from '../db.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const SNIPPET_PATH = join(__dirname, '../../../snippet/protopulse.js')
+const SNIPPET_PATH = join(__dirname, '../../snippet/protopulse.js')
 
 const router = Router()
 

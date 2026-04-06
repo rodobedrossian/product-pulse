@@ -28,7 +28,7 @@ app.use((req, res, next) => {
 })
 
 // Serve the snippet as a static file
-app.use('/snippet', express.static(join(__dirname, '../../snippet')))
+app.use('/snippet', express.static(join(__dirname, '../snippet')))
 
 // Higher body limits: replay chunks ~8 MB, events with screenshots ~5 MB
 app.use('/api/replay', express.json({ limit: '8mb' }))
