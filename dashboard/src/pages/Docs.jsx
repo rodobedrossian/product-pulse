@@ -495,6 +495,7 @@ export default function Docs() {
   "name": "Checkout flow",
   "test_type": "single",
   "prototype_url": "https://…",
+  "research_intent": "Do users complete checkout when shipping is pre-selected?",
   "goal_event": { "type": "click", "selector": "button.checkout" },
   "participant_count": 12,
   "steps": []
@@ -508,6 +509,8 @@ export default function Docs() {
                 { name: 'test_id', type: 'string (UUID)', required: true, desc: 'Must be a single-goal test' },
               ]}
               response={`{
+  "test_name": "Checkout flow",
+  "research_intent": "Do users complete checkout when shipping is pre-selected?",
   "total_participants": 12,
   "completed_count": 8,
   "completion_rate_pct": "67%",

@@ -4,6 +4,7 @@ import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
 
 const API_URL = getApiBase() || 'http://localhost:3001'
+const RESEARCH_INTENT_MAX = 2000
 
 function pathnameFromUrl(url) {
   try {
@@ -375,6 +376,8 @@ export default function TestDetail() {
   const [pendingGoal, setPendingGoal] = useState(null) // { goalKind, selector, url, stepId? }
   const [savingGoal, setSavingGoal] = useState(false)
   const [showScript, setShowScript] = useState(false)
+  const [intentDraft, setIntentDraft] = useState('')
+  const [savingIntent, setSavingIntent] = useState(false)
 
   function loadTest() {
     return apiFetch(`/api/tests/${id}`)
@@ -414,6 +417,29 @@ export default function TestDetail() {
       window.removeEventListener('message', onMessage)
     }
   }, [id])
+
+  useEffect(() => {
+    if (!test) return
+    setIntentDraft(test.research_intent ?? '')
+  }, [test?.id, test?.research_intent])
+
+  async function saveResearchIntent() {
+    const next = intentDraft.slice(0, RESEARCH_INTENT_MAX)
+    const prev = (test.research_intent ?? '').trim()
+    if (next.trim() === prev) return
+    setSavingIntent(true)
+    try {
+      const updated = await apiFetch(`/api/tests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ research_intent: next })
+      })
+      setTest((t) => ({ ...t, research_intent: updated.research_intent }))
+    } catch (err) {
+      alert('Failed to save: ' + err.message)
+    } finally {
+      setSavingIntent(false)
+    }
+  }
 
   function openGoalPicker(step = null) {
     try {
@@ -563,6 +589,41 @@ export default function TestDetail() {
           </div>
         </div>
       </div>
+
+      {!isScenario && (
+        <>
+          {!String(test.research_intent || '').trim() && (
+            <section className="pp-banner pp-banner--info" style={{ marginBottom: '1rem' }}>
+              <p className="pp-banner-title" style={{ marginBottom: '0.35rem' }}>What are you trying to learn?</p>
+              <p className="pp-muted" style={{ margin: 0, fontSize: '0.875rem', lineHeight: 1.5 }}>
+                Add a research question or hypothesis so results stay interpretable when you compare runs.
+              </p>
+            </section>
+          )}
+          <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
+            <label className="pp-step-field-label" style={{ display: 'block', marginBottom: 0 }}>
+              <span>What you&apos;re testing</span>
+              <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem', display: 'block', marginTop: '0.2rem' }}>
+                Research question or hypothesis — what this test should answer (separate from the technical goal).
+              </span>
+              <textarea
+                className="pp-step-textarea"
+                placeholder='e.g. "Can users find checkout without scanning the whole page?" or "We believe the new CTA increases completions."'
+                rows={3}
+                maxLength={RESEARCH_INTENT_MAX}
+                value={intentDraft}
+                onChange={(e) => setIntentDraft(e.target.value.slice(0, RESEARCH_INTENT_MAX))}
+                onBlur={saveResearchIntent}
+                disabled={savingIntent}
+                style={{ marginTop: '0.5rem' }}
+              />
+              <span className="pp-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.35rem' }}>
+                {intentDraft.length}/{RESEARCH_INTENT_MAX}{savingIntent ? ' · Saving…' : ''}
+              </span>
+            </label>
+          </section>
+        </>
+      )}
 
       {/* Pending goal banner */}
       {pendingGoal && (

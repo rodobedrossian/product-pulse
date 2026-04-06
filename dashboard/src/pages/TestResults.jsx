@@ -401,6 +401,7 @@ export default function TestResults() {
   if (!data) return null
 
   const isScenario = data.test_type === 'scenario'
+  const researchIntent = data.research_intent?.trim()
 
   return (
     <div className="pp-page">
@@ -415,6 +416,13 @@ export default function TestResults() {
           </p>
         </div>
       </div>
+
+      {researchIntent && (
+        <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
+          <p className="pp-kicker" style={{ marginBottom: '0.5rem' }}>What you&apos;re testing</p>
+          <p style={{ margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{researchIntent}</p>
+        </section>
+      )}
 
       {isScenario ? (
         <ScenarioResults

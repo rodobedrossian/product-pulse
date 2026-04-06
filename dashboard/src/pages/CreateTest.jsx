@@ -7,6 +7,7 @@ export default function CreateTest() {
   const [name, setName] = useState('')
   const [prototypeUrl, setPrototypeUrl] = useState('')
   const [testType, setTestType] = useState('single')
+  const [researchIntent, setResearchIntent] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
@@ -15,9 +16,13 @@ export default function CreateTest() {
     setSubmitting(true)
     setError(null)
     try {
+      const body = { name, prototype_url: prototypeUrl, test_type: testType }
+      if (testType === 'single' && researchIntent.trim()) {
+        body.research_intent = researchIntent.trim()
+      }
       const test = await apiFetch('/api/tests', {
         method: 'POST',
-        body: JSON.stringify({ name, prototype_url: prototypeUrl, test_type: testType })
+        body: JSON.stringify(body)
       })
       navigate(`/tests/${test.id}`)
     } catch (err) {
@@ -107,6 +112,27 @@ export default function CreateTest() {
             onChange={(e) => setPrototypeUrl(e.target.value)}
           />
         </label>
+
+        {testType === 'single' && (
+          <label style={{ marginTop: '1rem' }}>
+            <span>
+              What are you trying to learn?{' '}
+              <span className="pp-muted" style={{ fontWeight: 400 }}>(optional)</span>
+            </span>
+            <textarea
+              value={researchIntent}
+              onChange={(e) => setResearchIntent(e.target.value.slice(0, 2000))}
+              placeholder='Research question or hypothesis — e.g. "Do users notice the new pricing tier?"'
+              rows={3}
+              maxLength={2000}
+              style={{ marginTop: '0.35rem' }}
+              className="pp-step-textarea"
+            />
+            <span className="pp-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.35rem' }}>
+              You can add or edit this on the test page. {researchIntent.length}/2000
+            </span>
+          </label>
+        )}
 
         <div className="pp-inline" style={{ marginTop: '1.25rem' }}>
           <button type="submit" className="primary" disabled={submitting}>
