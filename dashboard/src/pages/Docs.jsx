@@ -7,17 +7,16 @@ const NAV_ITEMS = [
   { id: 'quickstart',     label: 'Quick Start' },
   { id: 'snippet',        label: 'Installing the Snippet' },
   { id: 'events',         label: 'Tracked Events' },
-  { id: 'goals',          label: 'Goal Events' },
+  { id: 'goals',          label: 'Defining Goals' },
   { id: 'test-types',     label: 'Test Types' },
   { id: 'session-replay', label: 'Session Replay' },
-  { id: 'api',            label: 'REST API' },
   { id: 'mcp',            label: 'MCP Integration' },
   { id: 'mcp-tools',      label: 'MCP Tools' },
 ]
 
 // ── Reusable sub-components ──────────────────────────────────────────────────
 
-function CodeBlock({ code, language = 'js' }) {
+function CodeBlock({ code }) {
   const [copied, setCopied] = useState(false)
   async function handleCopy() {
     await navigator.clipboard.writeText(code)
@@ -31,14 +30,6 @@ function CodeBlock({ code, language = 'js' }) {
         {copied ? '✓ Copied' : 'Copy'}
       </button>
     </div>
-  )
-}
-
-function MethodBadge({ method }) {
-  return (
-    <span className={`pp-method-badge pp-method-${method.toLowerCase()}`}>
-      {method}
-    </span>
   )
 }
 
@@ -71,19 +62,6 @@ function ParamTable({ rows }) {
   )
 }
 
-function Endpoint({ method, path, desc, children }) {
-  return (
-    <div className="pp-endpoint">
-      <div className="pp-endpoint-head">
-        <MethodBadge method={method} />
-        <span>{path}</span>
-      </div>
-      {desc && <p className="pp-endpoint-desc">{desc}</p>}
-      {children}
-    </div>
-  )
-}
-
 function ToolCard({ name, desc, params, response }) {
   return (
     <div className="pp-tool-card">
@@ -98,7 +76,7 @@ function ToolCard({ name, desc, params, response }) {
       {response && (
         <>
           <p className="pp-label" style={{ marginBottom: '0.4rem', fontSize: '0.8rem' }}>Response</p>
-          <CodeBlock code={response} language="json" />
+          <CodeBlock code={response} />
         </>
       )}
     </div>
@@ -111,12 +89,10 @@ export default function Docs() {
   const [activeId, setActiveId] = useState('overview')
   const observerRef = useRef(null)
 
-  // IntersectionObserver — highlights sidebar link for the visible section
   useEffect(() => {
     const sections = document.querySelectorAll('.pp-docs-section[id]')
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        // Find the topmost intersecting section
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
@@ -160,25 +136,15 @@ export default function Docs() {
           <section id="overview" className="pp-docs-section">
             <h2>Overview</h2>
             <p className="pp-muted" style={{ marginBottom: '1.25rem', fontSize: '1rem' }}>
-              Product Pulse is a lightweight usability testing platform for prototypes. Embed one script tag — it handles event tracking, session replay, goal detection, and recruiting participants without modifying your prototype code.
+              Product Pulse is a usability testing platform for prototypes. Set up a test, share a link with participants, and watch interaction data, session replays, and completion results come in automatically — no code changes to your prototype required.
             </p>
 
-            <h3>How it works</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', margin: '1rem 0', fontFamily: 'ui-monospace, monospace', fontSize: '0.85rem' }}>
-              {['Your Prototype', '→', 'Snippet', '→', 'API', '→', 'Dashboard', '/', 'MCP'].map((label, i) => (
-                label === '→' || label === '/' ? (
-                  <span key={i} className="pp-muted">{label}</span>
-                ) : (
-                  <span key={i} style={{ padding: '0.3rem 0.75rem', background: 'var(--color-border)', borderRadius: 'var(--radius-sm)' }}>{label}</span>
-                )
-              ))}
-            </div>
-
-            <p>The platform has three main components:</p>
+            <h3>What you can do</h3>
             <ul>
-              <li><strong>Snippet</strong> — a JavaScript snippet injected into your prototype that tracks clicks, URL changes, and form interactions, uploads session replays, and renders the participant task overlay.</li>
-              <li><strong>REST API</strong> — manages tests, participants, events, replays, and MCP tokens. All endpoints are CORS-enabled and accessible from any origin.</li>
-              <li><strong>MCP Server</strong> — exposes your data as natural-language tools so AI assistants (Claude Desktop, Cursor, Windsurf) can query your test results without writing SQL.</li>
+              <li><strong>Run single-goal tests</strong> — measure whether participants can find or reach a specific element or screen, and how long it takes.</li>
+              <li><strong>Run scenario tests</strong> — guide participants through a multi-step flow and see where they drop off.</li>
+              <li><strong>Watch session replays</strong> — see exactly what each participant did, click by click, with a full timeline scrubber.</li>
+              <li><strong>Ask your AI assistant</strong> — connect Claude Desktop, Cursor, or any MCP-compatible tool to query your results in plain language.</li>
             </ul>
           </section>
 
@@ -192,21 +158,21 @@ export default function Docs() {
                 <div className="pp-docs-step-num">1</div>
                 <div className="pp-docs-step-body">
                   <strong>Create a test</strong>
-                  <p>Go to <strong>New test</strong>, enter a name and your prototype URL, choose Single-goal or Scenario, and save. You'll get a test ID.</p>
+                  <p>Go to <strong>New test</strong>, enter a name and your prototype URL, and choose Single-goal or Scenario.</p>
                 </div>
               </div>
               <div className="pp-docs-step">
                 <div className="pp-docs-step-num">2</div>
                 <div className="pp-docs-step-body">
                   <strong>Define your goal</strong>
-                  <p>On the test setup page, click <strong>Pick element</strong> — your prototype opens in picker mode. Click the target element (a button, link, or page) to record the goal event.</p>
+                  <p>On the test setup page, click <strong>Pick element</strong> — your prototype opens in a selection mode. Click the target element or navigate to the destination screen to record the goal.</p>
                 </div>
               </div>
               <div className="pp-docs-step">
                 <div className="pp-docs-step-num">3</div>
                 <div className="pp-docs-step-body">
                   <strong>Add participants</strong>
-                  <p>Enter a participant name to generate a unique tracking link. Share that link — when they open it, the snippet activates and tracking begins automatically.</p>
+                  <p>Enter a participant name to generate a unique link. Share it — when they open it, tracking begins automatically. No instructions needed on their end.</p>
                 </div>
               </div>
               <div className="pp-docs-step">
@@ -223,140 +189,120 @@ export default function Docs() {
           <section id="snippet" className="pp-docs-section">
             <h2>Installing the Snippet</h2>
             <p>
-              The snippet is served dynamically per-test — it bakes in the API URL and test ID, so participants need no configuration.
-              The dashboard generates the embed code for you on the test setup page.
+              The snippet is what makes tracking work. It's a small piece of code that you paste into your prototype once — it handles all event capture, session recording, and the participant task overlay automatically.
             </p>
 
-            <h3>Automatic embed (recommended)</h3>
-            <p>Copy the snippet from the test setup page. It looks like this:</p>
-            <CodeBlock language="html" code={`<script src="https://your-api.railway.app/api/tests/{testId}/snippet.js"></script>`} />
-            <p>Paste it into the <code>&lt;head&gt;</code> or before <code>&lt;/body&gt;</code> of every page in your prototype.</p>
-
-            <h3>URL parameters</h3>
-            <p>When a participant opens their unique link, these parameters are injected automatically:</p>
-            <ParamTable rows={[
-              { name: '__test_id', type: 'string (UUID)', required: true, desc: 'Test identifier — injected by the participant link' },
-              { name: '__tid',     type: 'string (UUID)', required: true, desc: 'Participant tracking ID — injected by the participant link' },
-              { name: '__pp_mode', type: '"pick"',        required: false, desc: 'Activates picker mode for goal selection (used by the dashboard, not participants)' },
-            ]} />
-            <p>The snippet persists <code>__test_id</code> and <code>__tid</code> in <code>sessionStorage</code> and appends them to all same-origin links, so tracking survives SPA navigation.</p>
-
-            <h3>Picker mode</h3>
+            <h3>Getting the snippet</h3>
             <p>
-              When opened with <code>?__pp_mode=pick</code>, the snippet renders a floating toolbar instead of tracking events.
-              The test designer can click "Pick Element" then hover over any element to select it as a goal.
-              The selection is sent back to the dashboard via <code>postMessage</code>.
+              You don't need to write it yourself. On the test setup page, the embed code is already generated for you with your test's details pre-filled. It looks like this:
+            </p>
+            <CodeBlock code={`<script src="https://your-api.railway.app/api/tests/{testId}/snippet.js"></script>`} />
+            <p>
+              Paste it into the <code>&lt;head&gt;</code> or just before <code>&lt;/body&gt;</code> on every page of your prototype. If your prototype is a single-page app, one paste is enough.
             </p>
 
             <div className="pp-docs-note">
-              <strong>Note:</strong> Picker mode completely disables participant tracking. A participant can never accidentally trigger picker mode — the dashboard opens it in a separate popup window.
+              <strong>Figma / Webflow / no-code tools:</strong> If your prototype doesn't let you add custom scripts, you'll need to export it to a host that supports HTML embedding — or test with a coded prototype instead.
             </div>
+
+            <h3>How participants get tracked</h3>
+            <p>
+              When you add a participant on the test setup page and share their link, the link already contains everything needed to identify that participant's session. No extra setup is required — tracking starts the moment they open the link.
+            </p>
+
+            <h3>Goal selection mode</h3>
+            <p>
+              When you click <strong>Pick element</strong> on the test setup page, your prototype opens in a special mode just for you. Hover over any element on the page and it highlights — click it to set it as the goal. You can also click <strong>Use page URL</strong> to set a destination screen as the goal instead. The dashboard records your selection automatically and closes the window.
+            </p>
+            <p>
+              This mode is completely separate from participant sessions. Your participants will never see it.
+            </p>
           </section>
 
           {/* ── Events ── */}
           <section id="events" className="pp-docs-section">
             <h2>Tracked Events</h2>
             <p>
-              The snippet automatically tracks three event types. Each event is sent to{' '}
-              <code>POST /api/events</code> in real time.
+              The snippet automatically records participant interactions as they happen. You don't configure what gets tracked — it captures everything relevant out of the box.
             </p>
 
             <table className="pp-param-table" style={{ marginBottom: '1.5rem' }}>
               <thead>
                 <tr>
-                  <th>Type</th>
-                  <th>Trigger</th>
-                  <th>selector</th>
-                  <th>screenshot</th>
-                  <th>metadata</th>
+                  <th>Interaction</th>
+                  <th>When it's recorded</th>
+                  <th>What you see in results</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td><span className="pp-param-name">click</span></td>
-                  <td>Any click (capture phase)</td>
-                  <td>CSS selector of target</td>
-                  <td>Yes</td>
-                  <td><code>{'{ text: "…" }'}</code> (first 80 chars of element text)</td>
+                  <td><strong>Click</strong></td>
+                  <td>The participant clicks anything — buttons, links, images, text</td>
+                  <td>The element that was clicked, its label, the page it was on, and a screenshot</td>
                 </tr>
                 <tr>
-                  <td><span className="pp-param-name">url_change</span></td>
-                  <td>pushState, replaceState, popstate, hashchange</td>
-                  <td><em>null</em></td>
-                  <td>Yes (150ms delay)</td>
-                  <td><em>null</em></td>
+                  <td><strong>Page navigation</strong></td>
+                  <td>The participant moves to a different screen or URL</td>
+                  <td>The destination URL and a screenshot of the new screen</td>
                 </tr>
                 <tr>
-                  <td><span className="pp-param-name">input_change</span></td>
-                  <td><code>change</code> event on form inputs</td>
-                  <td>CSS selector of input</td>
-                  <td>No</td>
-                  <td><code>{'{ tagName: "INPUT" }'}</code></td>
+                  <td><strong>Form interaction</strong></td>
+                  <td>The participant fills in or changes a form field</td>
+                  <td>That a form field was touched — values are never stored</td>
                 </tr>
               </tbody>
             </table>
 
-            <h3>Custom events</h3>
-            <p>You can send custom events from your prototype code using the global <code>window.ProtoPulse</code> object:</p>
-            <CodeBlock language="js" code={`// Track a custom interaction
-window.ProtoPulse.track('form_submitted', { formId: 'signup', step: 2 })
-
-// Track an animation completion
-window.ProtoPulse.track('animation_complete', { name: 'hero-entrance' })`} />
-            <ParamTable rows={[
-              { name: 'eventName', type: 'string', required: true, desc: 'Custom event type name' },
-              { name: 'metadata',  type: 'object', required: false, desc: 'Any JSON-serializable key-value data' },
-            ]} />
-
-            <h3>Event payload</h3>
-            <p>Every event sent to the API has this shape:</p>
-            <CodeBlock language="json" code={`{
-  "tid": "participant-tracking-id",
-  "test_id": "uuid",
-  "type": "click",
-  "selector": "button.checkout",
-  "url": "https://app.example.com/cart",
-  "metadata": { "text": "Proceed to checkout" },
-  "timestamp": "2026-04-06T14:30:00.000Z",
-  "screenshot": "data:image/png;base64,…"
-}`} />
+            <h3>Custom tracking</h3>
+            <p>
+              If your prototype has interactions that aren't covered automatically — like a custom animation trigger or a multi-step modal — you can log them manually using a single line of JavaScript:
+            </p>
+            <CodeBlock code={`window.ProtoPulse.track('animation_played', { name: 'onboarding-intro' })`} />
+            <p>
+              The first argument is a label you choose. The second is optional extra context. Custom events appear in the participant's event timeline alongside automatically tracked ones.
+            </p>
           </section>
 
           {/* ── Goals ── */}
           <section id="goals" className="pp-docs-section">
-            <h2>Goal Events</h2>
+            <h2>Defining Goals</h2>
             <p>
-              A goal is a rule that tells Product Pulse what "success" looks like for a test or step.
-              Goals are defined as a JSON object with up to three fields:
+              A goal is the action that marks success for a test or step. When a participant reaches their goal, Product Pulse records the completion and stops timing.
             </p>
-            <CodeBlock language="json" code={`{
-  "type": "click",
-  "selector": "button.checkout",
-  "url_pattern": "/cart"
-}`} />
-            <ParamTable rows={[
-              { name: 'type',        type: 'string', required: true,  desc: 'Event type to match: "click", "url_change", "input_change", or any custom type' },
-              { name: 'selector',    type: 'string', required: false, desc: 'CSS selector of the target element. Must be an exact match.' },
-              { name: 'url_pattern', type: 'string', required: false, desc: 'Substring to find in the current page URL. Case-sensitive.' },
-            ]} />
 
-            <h3>Matching logic</h3>
-            <p>All conditions use <strong>AND logic</strong> — all specified fields must match simultaneously:</p>
-            <table className="pp-param-table">
-              <thead><tr><th>type</th><th>selector</th><th>url_pattern</th><th>Matches when…</th></tr></thead>
-              <tbody>
-                <tr><td>✓</td><td></td><td></td><td>Any event of that type</td></tr>
-                <tr><td>✓</td><td>✓</td><td></td><td>Correct type AND selector matches</td></tr>
-                <tr><td>✓</td><td></td><td>✓</td><td>Correct type AND URL contains pattern</td></tr>
-                <tr><td>✓</td><td>✓</td><td>✓</td><td>All three must match</td></tr>
-              </tbody>
-            </table>
-            <div className="pp-docs-note">
-              <strong>Why AND, not OR?</strong> Setting only <code>url_pattern: "/"</code> would match every page. Requiring both <code>type</code> and at least one specificity field prevents accidental false positives.
+            <h3>Three ways to define a goal</h3>
+            <div className="pp-docs-steps" style={{ marginBottom: '1.25rem' }}>
+              <div className="pp-docs-step">
+                <div className="pp-docs-step-num" style={{ background: 'var(--color-text)', fontSize: '0.75rem' }}>1</div>
+                <div className="pp-docs-step-body">
+                  <strong>Click a specific element</strong>
+                  <p>The participant must click a particular button, link, or element — anywhere on the prototype. Use this when the goal is a single action like "click the checkout button."</p>
+                </div>
+              </div>
+              <div className="pp-docs-step">
+                <div className="pp-docs-step-num" style={{ background: 'var(--color-text)', fontSize: '0.75rem' }}>2</div>
+                <div className="pp-docs-step-body">
+                  <strong>Reach a specific screen</strong>
+                  <p>The participant must navigate to a particular page or URL. Use this when the goal is an outcome like "arriving at the confirmation screen."</p>
+                </div>
+              </div>
+              <div className="pp-docs-step">
+                <div className="pp-docs-step-num" style={{ background: 'var(--color-text)', fontSize: '0.75rem' }}>3</div>
+                <div className="pp-docs-step-body">
+                  <strong>Click an element on a specific screen</strong>
+                  <p>Both must match — the right element clicked on the right page. Use this when the same button appears on multiple screens and you only want to count one of them.</p>
+                </div>
+              </div>
             </div>
 
-            <h3>Picker mode</h3>
-            <p>The easiest way to define a goal is using the visual picker in the test setup page. Click <strong>Pick element</strong> to open your prototype, then click the target element. The dashboard records the exact CSS selector and current URL automatically.</p>
+            <p>
+              The easiest way to set a goal is the <strong>visual picker</strong>. Click <strong>Pick element</strong> on the test setup page, navigate to the right screen in your prototype, then click the target element (or choose "Use page URL" for a screen-based goal). The dashboard captures the details automatically.
+            </p>
+
+            <h3>Start point (optional)</h3>
+            <p>
+              You can also define a <strong>start point</strong> — the action that begins timing for a participant. If you leave it blank, timing starts from the participant's very first interaction. A start point is useful when participants need to navigate to the right place before the actual task begins, and you don't want that navigation counted in the time.
+            </p>
           </section>
 
           {/* ── Test Types ── */}
@@ -364,248 +310,100 @@ window.ProtoPulse.track('animation_complete', { name: 'hero-entrance' })`} />
             <h2>Test Types</h2>
 
             <h3>Single-goal test</h3>
-            <p>Best for measuring whether participants can complete one specific task (e.g., find the checkout button). Tracks completion and time from start to goal.</p>
-            <CodeBlock language="json" code={`POST /api/tests
-{
-  "name": "Purchase flow",
-  "prototype_url": "https://app.example.com",
-  "test_type": "single",
-  "start_event": { "type": "click", "selector": "button.add-to-cart" },
-  "goal_event":  { "type": "url_change", "url_pattern": "/order-confirmation" }
-}`} />
             <p>
-              <code>start_event</code> is optional — if omitted, timing starts from the participant's first event.{' '}
-              <code>goal_event</code> can also be omitted, which disables automatic completion detection.
+              Best for measuring whether participants can complete one specific task — finding the checkout button, locating a setting, or reaching a particular screen. Results show completion rate and time-to-complete for each participant.
             </p>
+
+            <p><strong>Fields on the New Test form:</strong></p>
+            <table className="pp-param-table" style={{ marginBottom: '1.5rem' }}>
+              <thead><tr><th>Field</th><th>Required</th><th>What it does</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>Test name</strong></td>
+                  <td><span className="pp-param-required">required</span></td>
+                  <td>A label for your own reference — not shown to participants</td>
+                </tr>
+                <tr>
+                  <td><strong>Prototype URL</strong></td>
+                  <td><span className="pp-param-required">required</span></td>
+                  <td>The starting page of your prototype</td>
+                </tr>
+                <tr>
+                  <td><strong>Start point</strong></td>
+                  <td><span className="pp-param-optional">optional</span></td>
+                  <td>The action that begins timing. If blank, timing starts from the first interaction.</td>
+                </tr>
+                <tr>
+                  <td><strong>Goal</strong></td>
+                  <td><span className="pp-param-optional">optional</span></td>
+                  <td>The element or screen the participant must reach. Without a goal, events are still tracked but completion is not automatically detected.</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p><strong>What results look like:</strong> For each participant you'll see whether they completed the goal, how long it took, a full event timeline with screenshots, and a link to watch their session replay.</p>
 
             <h3>Scenario test (multi-step)</h3>
-            <p>Best for testing a complete flow across multiple tasks in sequence. Each step has its own goal, and steps must be completed in order.</p>
-            <CodeBlock language="json" code={`POST /api/tests
-{
-  "name": "Onboarding flow",
-  "prototype_url": "https://app.example.com/onboarding",
-  "test_type": "scenario"
-}
-
-// Then add steps:
-POST /api/tests/{testId}/steps
-{
-  "title": "Sign Up",
-  "task": "Create an account with your email",
-  "follow_up": "You should now be on the email confirmation screen"
-}
-
-// Set the goal for that step:
-PATCH /api/tests/{testId}/steps/{stepId}
-{
-  "goal_event": { "type": "url_change", "url_pattern": "/confirm-email" }
-}`} />
-
-            <h3>Sequential enforcement</h3>
             <p>
-              The server validates completion order. If step 3's goal fires before step 2 is complete, it is silently ignored.
-              This prevents participants from accidentally triggering a goal from a previous session or navigating out of order.
+              Best for testing a complete user flow — onboarding, a purchase funnel, a sign-up sequence. Participants are guided through tasks one at a time via an on-screen card. Results show a drop-off funnel across all steps.
             </p>
-            <p>
-              Timing per step is measured as: <em>time from previous step completion → this step's goal event</em>.
-              For step 1, timing starts from the participant's first tracked event.
-            </p>
+
+            <p><strong>Fields on the New Test form:</strong> Same as single-goal (name and prototype URL), plus you build out steps after creating the test.</p>
+
+            <p><strong>Each step has three fields:</strong></p>
+            <table className="pp-param-table" style={{ marginBottom: '1.5rem' }}>
+              <thead><tr><th>Field</th><th>Required</th><th>What it does</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>Title</strong></td>
+                  <td><span className="pp-param-optional">optional</span></td>
+                  <td>A short label shown to you in the results funnel — not visible to participants</td>
+                </tr>
+                <tr>
+                  <td><strong>Task</strong></td>
+                  <td><span className="pp-param-optional">optional</span></td>
+                  <td>The instruction shown to the participant in the on-screen overlay card during their session</td>
+                </tr>
+                <tr>
+                  <td><strong>Goal</strong></td>
+                  <td><span className="pp-param-optional">optional</span></td>
+                  <td>The element or screen that marks this step as complete. Set using the visual picker.</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p><strong>How participants experience it:</strong> An overlay card appears in the corner of the screen showing the current task. When they complete the step's goal, the card celebrates briefly and advances to the next task automatically.</p>
+
+            <p><strong>What results look like:</strong> A completion funnel showing how many participants finished each step, median time per step, and where the biggest drop-offs happened. You can also drill into individual participants to see which steps they completed and watch their replay.</p>
+
+            <div className="pp-docs-note">
+              <strong>Step order is enforced.</strong> Participants can only complete steps in sequence — completing a later step before an earlier one doesn't count. This keeps your funnel data accurate.
+            </div>
           </section>
 
           {/* ── Session Replay ── */}
           <section id="session-replay" className="pp-docs-section">
             <h2>Session Replay</h2>
             <p>
-              Every participant session is automatically recorded using <strong>rrweb</strong> — a full DOM snapshot + incremental mutations approach that reconstructs exactly what the participant saw and did.
+              Every participant session is recorded automatically. No configuration needed — if tracking is running, recording is running.
             </p>
 
-            <h3>How recording works</h3>
-            <div className="pp-docs-steps">
-              <div className="pp-docs-step">
-                <div className="pp-docs-step-num">1</div>
-                <div className="pp-docs-step-body">
-                  <strong>Replay bundle loads</strong>
-                  <p>The snippet fetches <code>/api/snippet/replay-bundle.js</code>, which provides <code>window.__ppStartReplay()</code>.</p>
-                </div>
-              </div>
-              <div className="pp-docs-step">
-                <div className="pp-docs-step-num">2</div>
-                <div className="pp-docs-step-body">
-                  <strong>Recording starts</strong>
-                  <p>rrweb begins capturing DOM events with <code>maskAllInputs: true</code> — all typed values are replaced with asterisks.</p>
-                </div>
-              </div>
-              <div className="pp-docs-step">
-                <div className="pp-docs-step-num">3</div>
-                <div className="pp-docs-step-body">
-                  <strong>Chunks uploaded</strong>
-                  <p>Events are batched and sent to <code>POST /api/replay/chunk</code> as they accumulate. Each chunk is stored in Supabase Storage.</p>
-                </div>
-              </div>
-              <div className="pp-docs-step">
-                <div className="pp-docs-step-num">4</div>
-                <div className="pp-docs-step-body">
-                  <strong>Recording stops</strong>
-                  <p>When the participant completes the test goal, <code>window.__ppStopReplay()</code> is called and <code>POST /api/replay/complete</code> marks the session as done.</p>
-                </div>
-              </div>
-            </div>
+            <h3>What you can see</h3>
+            <p>
+              Replays reconstruct the participant's full session: every click, scroll, and screen change, exactly as they experienced it. You can scrub through the timeline, pause on any moment, and see what the participant saw at each point in time.
+            </p>
+
+            <h3>Viewing a replay</h3>
+            <p>
+              Go to the <strong>Results</strong> tab for any test. Next to each participant, if a recording is available, you'll see a <strong>Watch replay</strong> button. Click it to open the full-screen player with timeline scrubber and playback controls.
+            </p>
 
             <h3>Privacy</h3>
             <ul>
-              <li>All input values are masked — passwords, emails, and form data are never stored.</li>
-              <li>No audio or video is captured — only DOM structure and interactions.</li>
-              <li>Replays are stored in a private Supabase Storage bucket, accessible only via authenticated API calls.</li>
+              <li><strong>No form values are stored.</strong> Anything a participant types — passwords, emails, names, search queries — is replaced with placeholders before it ever leaves their device.</li>
+              <li><strong>No audio or video.</strong> Replays capture screen state and interactions only — not the participant's camera or microphone.</li>
+              <li><strong>Team-only access.</strong> Recordings are private and only accessible to members of your team.</li>
             </ul>
-
-            <h3>Viewing replays</h3>
-            <p>
-              From the Results page, click <strong>Watch replay</strong> next to any participant who has a recording.
-              The replay player shows a full-fidelity reconstruction of their session with a timeline scrubber and playback controls.
-            </p>
-          </section>
-
-          {/* ── REST API ── */}
-          <section id="api" className="pp-docs-section">
-            <h2>REST API</h2>
-            <p>
-              All endpoints are served from your Railway API service. Authenticated endpoints require an <code>Authorization: Bearer &lt;supabase-jwt&gt;</code> header.
-              Public endpoints (snippet, event ingestion, participant creation) require no auth.
-            </p>
-            <div className="pp-docs-note">
-              <strong>Base URL:</strong> <code>https://your-api.up.railway.app</code>
-            </div>
-
-            <h3>Tests</h3>
-
-            <Endpoint method="GET" path="/api/tests" desc="List all tests for your team, newest first.">
-              <p style={{ fontSize: '0.875rem', marginBottom: 0 }}>Returns: <code>{'[ { id, name, test_type, prototype_url, created_at } ]'}</code></p>
-            </Endpoint>
-
-            <Endpoint method="POST" path="/api/tests" desc="Create a new usability test.">
-              <ParamTable rows={[
-                { name: 'name',          type: 'string',  required: true,  desc: 'Test name' },
-                { name: 'prototype_url', type: 'string',  required: true,  desc: 'URL of the prototype to test' },
-                { name: 'test_type',     type: '"single" | "scenario"', required: false, desc: 'Defaults to "single"' },
-                { name: 'start_event',   type: 'GoalEvent', required: false, desc: 'Event that marks the start of timing' },
-                { name: 'goal_event',    type: 'GoalEvent', required: false, desc: 'Event that marks test completion' },
-              ]} />
-            </Endpoint>
-
-            <Endpoint method="GET" path="/api/tests/:id" desc="Get a single test with participants and steps." />
-
-            <Endpoint method="PATCH" path="/api/tests/:id" desc="Update test name, URL, or goal events.">
-              <ParamTable rows={[
-                { name: 'name',          type: 'string',    required: false, desc: 'New test name' },
-                { name: 'prototype_url', type: 'string',    required: false, desc: 'New prototype URL' },
-                { name: 'goal_event',    type: 'GoalEvent', required: false, desc: 'New goal event definition' },
-                { name: 'start_event',   type: 'GoalEvent', required: false, desc: 'New start event definition' },
-              ]} />
-            </Endpoint>
-
-            <Endpoint method="GET" path="/api/tests/:id/snippet.js" desc="Get the tracking snippet for this test (public, no auth required). Returns JavaScript." />
-
-            <Endpoint method="GET" path="/api/tests/:id/tasks" desc="Get scenario task definitions for the participant overlay (public)." />
-
-            <Endpoint method="GET" path="/api/tests/:id/heartbeat" desc="Check if a test is actively receiving events (public). Returns active status and seconds since last event." />
-
-            <Endpoint method="GET" path="/api/tests/:id/results" desc="Get aggregated results. Returns different shapes for single-goal vs scenario tests." />
-
-            <h3>Steps (scenario tests)</h3>
-
-            <Endpoint method="POST" path="/api/tests/:id/steps" desc="Add a step to a scenario test.">
-              <ParamTable rows={[
-                { name: 'title',     type: 'string', required: false, desc: 'Step title shown in the overlay' },
-                { name: 'task',      type: 'string', required: false, desc: 'Task description shown to the participant' },
-                { name: 'follow_up', type: 'string', required: false, desc: 'Follow-up text shown after the task' },
-              ]} />
-            </Endpoint>
-
-            <Endpoint method="PATCH" path="/api/tests/:id/steps/:stepId" desc="Update step content or goal event.">
-              <ParamTable rows={[
-                { name: 'title',      type: 'string',    required: false, desc: 'Step title' },
-                { name: 'task',       type: 'string',    required: false, desc: 'Task description' },
-                { name: 'follow_up',  type: 'string',    required: false, desc: 'Follow-up text' },
-                { name: 'goal_event', type: 'GoalEvent', required: false, desc: 'Goal for this step' },
-              ]} />
-            </Endpoint>
-
-            <Endpoint method="DELETE" path="/api/tests/:id/steps/:stepId" desc="Delete a step and re-sequence remaining steps." />
-
-            <h3>Participants</h3>
-
-            <Endpoint method="POST" path="/api/tests/:id/participants" desc="Create a participant and get their unique tracking link (public, no auth required).">
-              <ParamTable rows={[
-                { name: 'name', type: 'string', required: true, desc: 'Participant name' },
-              ]} />
-              <CodeBlock language="json" code={`{
-  "id": "uuid",
-  "tid": "tracking-uuid",
-  "name": "Alice",
-  "link": "https://your-prototype.com?__test_id=…&__tid=…",
-  "created_at": "2026-04-06T14:00:00Z"
-}`} />
-            </Endpoint>
-
-            <h3>Events</h3>
-
-            <Endpoint method="POST" path="/api/events" desc="Ingest a tracked event from the snippet (public). Returns 204 No Content.">
-              <ParamTable rows={[
-                { name: 'tid',        type: 'string',    required: true,  desc: 'Participant tracking ID' },
-                { name: 'test_id',    type: 'string',    required: true,  desc: 'Test UUID' },
-                { name: 'type',       type: 'string',    required: true,  desc: 'Event type' },
-                { name: 'selector',   type: 'string',    required: false, desc: 'CSS selector of interacted element' },
-                { name: 'url',        type: 'string',    required: false, desc: 'Current page URL' },
-                { name: 'metadata',   type: 'object',    required: false, desc: 'Custom key-value data' },
-                { name: 'timestamp',  type: 'ISO 8601',  required: true,  desc: 'Event timestamp' },
-                { name: 'screenshot', type: 'data URI',  required: false, desc: 'Base64 screenshot (max 4 MB)' },
-              ]} />
-            </Endpoint>
-
-            <h3>Session Replay</h3>
-
-            <Endpoint method="POST" path="/api/replay/chunk" desc="Upload a batch of rrweb events (public).">
-              <ParamTable rows={[
-                { name: 'tid',        type: 'string', required: true, desc: 'Participant tracking ID' },
-                { name: 'test_id',    type: 'string', required: true, desc: 'Test UUID' },
-                { name: 'part_index', type: 'number', required: true, desc: 'Chunk index (0-based)' },
-                { name: 'events',     type: 'array',  required: true, desc: 'Array of rrweb events' },
-              ]} />
-            </Endpoint>
-
-            <Endpoint method="POST" path="/api/replay/complete" desc="Mark a session replay as fully uploaded (public).">
-              <ParamTable rows={[
-                { name: 'tid',     type: 'string', required: true, desc: 'Participant tracking ID' },
-                { name: 'test_id', type: 'string', required: true, desc: 'Test UUID' },
-              ]} />
-            </Endpoint>
-
-            <Endpoint method="GET" path="/api/tests/:testId/replay/:tid" desc="Download and reconstruct a complete session replay (authenticated).">
-              <CodeBlock language="json" code={`{
-  "tid": "string",
-  "status": "recording | complete",
-  "chunk_count": 12,
-  "events": [ /* merged rrweb event array */ ]
-}`} />
-            </Endpoint>
-
-            <h3>MCP Tokens</h3>
-
-            <Endpoint method="POST" path="/api/mcp/tokens" desc="Generate a new MCP access token. The raw token is returned once — save it immediately.">
-              <ParamTable rows={[
-                { name: 'name', type: 'string', required: false, desc: 'Human-readable label, e.g. "Claude Desktop"' },
-              ]} />
-              <CodeBlock language="json" code={`{
-  "id": "uuid",
-  "name": "Claude Desktop",
-  "token": "pp_mcp_a1b2c3…",
-  "created_at": "2026-04-06T14:00:00Z"
-}`} />
-            </Endpoint>
-
-            <Endpoint method="GET" path="/api/mcp/tokens" desc="List all active (non-revoked) MCP tokens for your team. Never returns raw token values." />
-
-            <Endpoint method="DELETE" path="/api/mcp/tokens/:id" desc="Revoke an MCP token immediately. The token is soft-deleted and rejected on all future requests." />
           </section>
 
           {/* ── MCP Integration ── */}
@@ -613,19 +411,19 @@ PATCH /api/tests/{testId}/steps/{stepId}
             <h2>MCP Integration</h2>
             <p>
               The MCP (Model Context Protocol) server exposes your Product Pulse data as tools that any AI assistant can call.
-              Instead of writing queries or reading CSVs, you ask in plain English: <em>"Summarize the checkout flow test"</em> or <em>"Which step had the highest drop-off?"</em>
+              Instead of opening the dashboard, you can ask in plain English: <em>"Summarize the checkout flow test"</em> or <em>"Which step had the highest drop-off?"</em>
             </p>
 
             <h3>1. Generate a token</h3>
             <p>
-              Go to <strong>Settings → AI / MCP Access</strong> → enter a label (e.g. "Claude Desktop") → click <strong>Generate token</strong>.
+              Go to <strong>Settings → AI / MCP Access</strong>, enter a label (e.g. "Claude Desktop"), and click <strong>Generate token</strong>.
               Copy the <code>pp_mcp_…</code> token — it's shown only once.
             </p>
 
             <h3>2. Configure your AI tool</h3>
 
             <p><strong>Cursor</strong> — add to <code>~/.cursor/mcp.json</code>:</p>
-            <CodeBlock language="json" code={`{
+            <CodeBlock code={`{
   "mcpServers": {
     "product-pulse": {
       "type": "http",
@@ -638,7 +436,7 @@ PATCH /api/tests/{testId}/steps/{stepId}
 }`} />
 
             <p><strong>Claude Desktop</strong> — add to <code>claude_desktop_config.json</code>:</p>
-            <CodeBlock language="json" code={`{
+            <CodeBlock code={`{
   "mcpServers": {
     "product-pulse": {
       "type": "http",
