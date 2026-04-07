@@ -23,18 +23,26 @@ async function fetchChunk(url) {
   return Array.isArray(data) ? data : []
 }
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
+// ── Icons (Feather-style, 24×24 viewBox) ──────────────────────────────────────
 function IconExpand() {
   return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 5V1h4M8 1h4v4M12 8v4H8M5 12H1V8" />
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+      <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
     </svg>
   )
 }
 function IconCompress() {
   return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 1v4H1M8 1v4h4M8 12V8h4M5 8v4H1" />
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+      <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+      <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+      <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
     </svg>
   )
 }
@@ -182,16 +190,44 @@ export default function SessionReplay() {
 
     replayerRef.current = r
 
+    // ── Apply correct dimensions to DOM BEFORE r.play() ────────────────────
+    // rrweb reads container.clientWidth/clientHeight during play() to position
+    // .replayer-wrapper. If the container has the wrong (default) size at that
+    // moment, the wrapper gets a non-zero offset and only part of the recording
+    // is visible. We must set the correct dimensions synchronously here.
+    let rW = recordedSize.width
+    let rH = recordedSize.height
     try {
       const meta = r.getMetaData()
+      if (meta?.width > 0 && meta?.height > 0) {
+        rW = meta.width
+        rH = meta.height
+      }
       if (meta?.totalTime > 0) {
         totalMsRef.current = meta.totalTime
         setTotalTime(meta.totalTime)
       }
-      if (meta?.width > 0 && meta?.height > 0) {
-        setRecordedSize({ width: meta.width, height: meta.height })
-      }
     } catch (_) {}
+
+    // Direct DOM write (synchronous) — React state update would be too late
+    const outerW = outerRef.current?.clientWidth || 960
+    const sc     = rW > 0 ? outerW / rW : 1
+    Object.assign(containerRef.current.style, {
+      position:        'absolute',
+      top:             '0',
+      left:            '0',
+      width:           `${rW}px`,
+      height:          `${rH}px`,
+      transform:       `scale(${sc})`,
+      transformOrigin: 'top left',
+    })
+    // Sync outer aspect-ratio so it sizes to the correct height
+    if (outerRef.current) {
+      outerRef.current.style.aspectRatio = `${rW} / ${rH}`
+    }
+    // Sync React state (next render will write matching inline styles)
+    setRecordedSize({ width: rW, height: rH })
+    // ──────────────────────────────────────────────────────────────────────
 
     r.on('finish', () => {
       setIsPlaying(false)
@@ -335,14 +371,25 @@ export default function SessionReplay() {
     if (!el) return
     // Set immediately (synchronous, before paint)
     setOuterWidth(el.clientWidth || 0)
-    // Keep updated on resize
+    // Keep updated on resize — also directly update the inner container's
+    // transform so the scale changes without waiting for a React render cycle
     const ro = new ResizeObserver(entries => {
       const w = entries[0]?.contentRect.width
-      if (w) setOuterWidth(w)
+      if (!w) return
+      setOuterWidth(w)
+      // Direct DOM update for instant scale correction on resize
+      const inner = containerRef.current
+      if (inner && replayerRef.current) {
+        try {
+          const meta = replayerRef.current.getMetaData()
+          const rW = meta?.width || recordedSize.width
+          if (rW > 0) inner.style.transform = `scale(${w / rW})`
+        } catch (_) {}
+      }
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fullscreen change listener ────────────────────────────────────────────
   useEffect(() => {
