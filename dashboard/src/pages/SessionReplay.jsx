@@ -4,9 +4,10 @@ import { Replayer } from 'rrweb'
 import 'rrweb/dist/style.css'
 import { apiFetch } from '../api.js'
 
-const INITIAL_CHUNKS = 5   // chunks to fetch before starting playback (~15s)
-const STREAM_BATCH   = 10  // parallel chunk fetches per streaming batch
-const POLL_MS        = 250 // playhead poll interval
+const INITIAL_CHUNKS  = 5
+const STREAM_BATCH    = 10
+const POLL_MS         = 250
+const CONTROLS_H      = 52   // approx controls bar height for fullscreen calc
 
 function fmtTime(ms) {
   if (!ms || ms < 0) return '0:00'
@@ -22,29 +23,74 @@ async function fetchChunk(url) {
   return Array.isArray(data) ? data : []
 }
 
+// ── Icons ─────────────────────────────────────────────────────────────────────
+function IconExpand() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 5V1h4M8 1h4v4M12 8v4H8M5 12H1V8" />
+    </svg>
+  )
+}
+function IconCompress() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 1v4H1M8 1v4h4M8 12V8h4M5 8v4H1" />
+    </svg>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function SessionReplay() {
   const { id, tid } = useParams()
 
   // ── UI state ──────────────────────────────────────────────────────────────
-  const [phase, setPhase] = useState('idle')  // idle|loading|ready|error
+  const [phase, setPhase]       = useState('idle')   // idle|loading|ready|error
   const [statusMsg, setStatusMsg] = useState('Loading replay…')
-  const [error, setError] = useState(null)
+  const [error, setError]       = useState(null)
 
   // ── Player state ─────────────────────────────────────────────────────────
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [speed, setSpeed] = useState(1)
-  const [currentTime, setCurrentTime] = useState(0)   // ms from session start
-  const [totalTime, setTotalTime] = useState(0)        // ms
-  const [loadedPct, setLoadedPct] = useState(0)        // 0–1
+  const [isPlaying, setIsPlaying]   = useState(false)
+  const [speed, setSpeed]           = useState(1)
+  const [currentTime, setCurrentTime] = useState(0)   // ms
+  const [totalTime, setTotalTime]   = useState(0)      // ms
+  const [loadedPct, setLoadedPct]   = useState(0)      // 0–1
   const [isBuffering, setIsBuffering] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // ── Refs ─────────────────────────────────────────────────────────────────
-  const containerRef = useRef(null)
-  const replayerRef  = useRef(null)   // rrweb Replayer instance
-  const cancelRef    = useRef(false)  // abort streaming on unmount/nav
-  const pollRef      = useRef(null)   // setInterval handle
-  const loadedMsRef  = useRef(0)      // tracks end-timestamp of loaded events
-  const totalMsRef   = useRef(0)      // filled after metadata available
+  // ── Recorded / layout state ───────────────────────────────────────────────
+  const [recordedSize, setRecordedSize] = useState({ width: 1280, height: 800 })
+  const [outerWidth, setOuterWidth]     = useState(0)
+
+  // ── Refs ──────────────────────────────────────────────────────────────────
+  const outerRef      = useRef(null)   // outer container (visual bounds)
+  const containerRef  = useRef(null)   // rrweb Replayer mounts here (recorded size)
+  const cardRef       = useRef(null)   // pp-replay-card — fullscreened element
+  const replayerRef   = useRef(null)
+  const cancelRef     = useRef(false)
+  const pollRef       = useRef(null)
+  const loadedMsRef   = useRef(0)
+  const totalMsRef    = useRef(0)
+
+  // ── Scale calculation ─────────────────────────────────────────────────────
+  const scale = (() => {
+    if (!recordedSize.width || !outerWidth) return 1
+    if (isFullscreen) {
+      const scaleW = outerWidth / recordedSize.width
+      const scaleH = (window.innerHeight - CONTROLS_H) / recordedSize.height
+      return Math.min(scaleW, scaleH)
+    }
+    return outerWidth / recordedSize.width
+  })()
+
+  const scaledW = Math.round(recordedSize.width  * scale)
+  const scaledH = Math.round(recordedSize.height * scale)
+
+  // Centering offsets (for fullscreen letterboxing)
+  const offsetX = isFullscreen ? Math.max(0, Math.round((outerWidth - scaledW) / 2)) : 0
+  const offsetY = isFullscreen
+    ? Math.max(0, Math.round(((window.innerHeight - CONTROLS_H) - scaledH) / 2))
+    : 0
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -55,7 +101,6 @@ export default function SessionReplay() {
       if (!r) return
       const t = r.getCurrentTime()
       setCurrentTime(t)
-      // Detect if playhead has caught up to buffered content
       if (loadedMsRef.current > 0 && t >= loadedMsRef.current - 500) {
         setIsBuffering(true)
       } else {
@@ -103,13 +148,21 @@ export default function SessionReplay() {
     const r = replayerRef.current
     if (!r || !totalTime) return
     const rect = e.currentTarget.getBoundingClientRect()
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     const targetMs = pct * totalTime
     setCurrentTime(targetMs)
     if (isPlaying) {
       r.play(targetMs)
     } else {
       r.pause(targetMs)
+    }
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      cardRef.current?.requestFullscreen?.()
+    } else {
+      document.exitFullscreen?.()
     }
   }
 
@@ -120,25 +173,26 @@ export default function SessionReplay() {
     destroyReplayer()
 
     const r = new Replayer(events, {
-      root: containerRef.current,
-      speed: 1,
-      skipInactive: true,
-      showWarning: false,
-      triggerFocus: false,
+      root:          containerRef.current,
+      speed:         1,
+      skipInactive:  true,
+      showWarning:   false,
+      triggerFocus:  false,
     })
 
     replayerRef.current = r
 
-    // Get total time once we have a full snapshot + some events
     try {
       const meta = r.getMetaData()
       if (meta?.totalTime > 0) {
         totalMsRef.current = meta.totalTime
         setTotalTime(meta.totalTime)
       }
+      if (meta?.width > 0 && meta?.height > 0) {
+        setRecordedSize({ width: meta.width, height: meta.height })
+      }
     } catch (_) {}
 
-    // Listen for finish
     r.on('finish', () => {
       setIsPlaying(false)
       stopPoll()
@@ -171,7 +225,6 @@ export default function SessionReplay() {
       setLoadedPct(loaded / total)
       if (lastTs > 0) loadedMsRef.current = lastTs
 
-      // Update totalTime from meta once more data is loaded
       try {
         const meta = replayer.getMetaData()
         if (meta?.totalTime > totalMsRef.current) {
@@ -180,7 +233,6 @@ export default function SessionReplay() {
         }
       } catch (_) {}
 
-      // Yield — let GC run and browser render between batches
       await new Promise(resolve => setTimeout(resolve, 0))
     }
 
@@ -204,11 +256,10 @@ export default function SessionReplay() {
       setIsBuffering(false)
 
       try {
-        // Step 1: get metadata + signed URLs from API
         const meta = await apiFetch(`/api/tests/${id}/replay/${tid}`)
         if (cancelRef.current) return
 
-        // ── Merged path: single CDN file ────────────────────────────────
+        // ── Merged path ─────────────────────────────────────────────────
         if (meta.merged && meta.url) {
           setStatusMsg('Preparing replay…')
           const res = await fetch(meta.url)
@@ -229,11 +280,10 @@ export default function SessionReplay() {
           return
         }
 
-        // ── Chunk path: stream from signed URLs ──────────────────────────
+        // ── Chunk path ──────────────────────────────────────────────────
         const allUrls = meta.chunks ?? []
         if (allUrls.length === 0) throw new Error('No replay data found')
 
-        // Fetch first N chunks to start playback immediately
         const initialUrls = allUrls.slice(0, INITIAL_CHUNKS)
         const restUrls    = allUrls.slice(INITIAL_CHUNKS)
 
@@ -246,12 +296,10 @@ export default function SessionReplay() {
 
         setLoadedPct(INITIAL_CHUNKS / allUrls.length)
 
-        // Track last timestamp of initially loaded events
         if (initialEvents.length > 0) {
           loadedMsRef.current = initialEvents[initialEvents.length - 1].timestamp
         }
 
-        // Init replayer and start playing immediately
         const r = initReplayer(initialEvents)
         if (!r) return
         r.play()
@@ -259,7 +307,6 @@ export default function SessionReplay() {
         startPoll()
         setPhase('ready')
 
-        // Stream remaining chunks in background without blocking
         if (restUrls.length > 0) {
           streamRemaining(restUrls, r, INITIAL_CHUNKS)
         } else {
@@ -282,16 +329,52 @@ export default function SessionReplay() {
     }
   }, [id, tid]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Container resize observer ─────────────────────────────────────────────
+  // ── Measure outer container width (drives scale) ──────────────────────────
   useLayoutEffect(() => {
-    const el = containerRef.current
+    const el = outerRef.current
     if (!el) return
-    // rrweb Replayer sizes itself; no manual resize needed
-    // but we keep the ref stable for re-mounts
-  }, [phase])
+    // Set immediately (synchronous, before paint)
+    setOuterWidth(el.clientWidth || 0)
+    // Keep updated on resize
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width
+      if (w) setOuterWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // ── Fullscreen change listener ────────────────────────────────────────────
+  useEffect(() => {
+    function onFsChange() {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
 
   // ── Derived values ────────────────────────────────────────────────────────
   const playedPct = totalTime > 0 ? Math.min(1, currentTime / totalTime) : 0
+
+  // ── Outer container style ─────────────────────────────────────────────────
+  // Normal mode: aspect-ratio drives the height automatically
+  // Fullscreen: height fills the viewport minus the controls bar
+  const outerStyle = isFullscreen
+    ? { height: `calc(100vh - ${CONTROLS_H}px)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+    : { aspectRatio: `${recordedSize.width} / ${recordedSize.height}` }
+
+  // ── Inner container style (rrweb mounts here) ─────────────────────────────
+  // Exact recorded dimensions, scaled down to fit outer.
+  // rrweb will set left:0, top:0 on .replayer-wrapper since container == recorded size.
+  const innerStyle = phase === 'ready' ? {
+    position:        'absolute',
+    top:             `${offsetY}px`,
+    left:            `${offsetX}px`,
+    width:           `${recordedSize.width}px`,
+    height:          `${recordedSize.height}px`,
+    transform:       `scale(${scale})`,
+    transformOrigin: 'top left',
+  } : {}
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -312,12 +395,15 @@ export default function SessionReplay() {
       )}
 
       {(phase === 'ready' || phase === 'loading') && !error && (
-        <div className="pp-card pp-replay-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="pp-card pp-replay-card" ref={cardRef} style={{ padding: 0, overflow: 'hidden' }}>
 
-          {/* Player area — rrweb Replayer mounts here */}
-          <div className="pp-replay-player" ref={containerRef} />
+          {/* Outer: clips to scaled size, provides background */}
+          <div className="pp-replay-outer" ref={outerRef} style={outerStyle}>
+            {/* Inner: exact recorded dimensions — rrweb Replayer mounts here */}
+            <div className="pp-replay-player" ref={containerRef} style={innerStyle} />
+          </div>
 
-          {/* Custom controls */}
+          {/* Controls */}
           {phase === 'ready' && (
             <div className="pp-replay-controls">
 
@@ -347,22 +433,10 @@ export default function SessionReplay() {
                 aria-valuemax={100}
               >
                 <div className="pp-replay-progress-inner">
-                  {/* Loaded/buffered */}
-                  <div
-                    className="pp-replay-progress-loaded"
-                    style={{ width: `${loadedPct * 100}%` }}
-                  />
-                  {/* Played */}
-                  <div
-                    className="pp-replay-progress-played"
-                    style={{ width: `${playedPct * 100}%` }}
-                  />
+                  <div className="pp-replay-progress-loaded" style={{ width: `${loadedPct * 100}%` }} />
+                  <div className="pp-replay-progress-played" style={{ width: `${playedPct * 100}%` }} />
                 </div>
-                {/* Thumb */}
-                <div
-                  className="pp-replay-progress-thumb"
-                  style={{ left: `${playedPct * 100}%` }}
-                />
+                <div className="pp-replay-progress-thumb" style={{ left: `${playedPct * 100}%` }} />
               </div>
 
               {/* Buffering indicator */}
@@ -383,6 +457,18 @@ export default function SessionReplay() {
                   </button>
                 ))}
               </div>
+
+              {/* Fullscreen */}
+              <button
+                type="button"
+                className="pp-replay-btn pp-replay-fullscreen-btn"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              >
+                {isFullscreen ? <IconCompress /> : <IconExpand />}
+              </button>
+
             </div>
           )}
         </div>

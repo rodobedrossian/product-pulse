@@ -989,27 +989,48 @@ details.pp-details[open] summary::before {
   margin-bottom: 1rem;
 }
 
-.pp-replay-player {
+/* Outer container: clips the scaled player, drives aspect-ratio height */
+.pp-replay-outer {
   width: 100%;
-  min-height: 420px;
-  overflow: hidden;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: #0f0f12;
   position: relative;
+  overflow: hidden;
+  background: #0f0f12;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  /* aspect-ratio is set inline from recorded dimensions */
 }
 
-/* rrweb raw Replayer creates an iframe inside — let it fill the container */
+/* Inner container: rrweb Replayer mounts here at exact recorded dimensions.
+   Positioned & scaled via inline styles. */
+.pp-replay-player {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* width / height / transform set inline */
+}
+
+/* rrweb iframe — no border, block display */
 .pp-replay-player iframe {
   display: block;
   border: none;
 }
 
-/* Raw rrweb Replayer wrapper centering */
+/* .replayer-wrapper is managed by rrweb — do not fight it.
+   Since .pp-replay-player matches recorded dimensions, rrweb will
+   naturally place the wrapper at left:0, top:0. */
 .pp-replay-player .replayer-wrapper {
   position: absolute !important;
-  left: 50% !important;
-  top: 50% !important;
-  transform-origin: 0 0 !important;
+}
+
+/* Fullscreen: card fills viewport, outer fills remaining height */
+.pp-replay-card:fullscreen {
+  display: flex;
+  flex-direction: column;
+  background: #0f0f12;
+  border-radius: 0;
+}
+.pp-replay-card:fullscreen .pp-replay-outer {
+  flex: 1;
+  border-radius: 0;
 }
 
 /* ── Custom replay controls ── */
@@ -1135,6 +1156,10 @@ details.pp-details[open] summary::before {
   color: rgba(255,255,255,0.4);
   flex-shrink: 0;
   font-style: italic;
+}
+
+.pp-replay-fullscreen-btn {
+  margin-left: auto;   /* push to the far right of the controls bar */
 }
 
 /* ─── Test type selector (CreateTest) ──────────────────────────────────────── */
