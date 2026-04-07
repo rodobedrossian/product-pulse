@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken'
 
 export const RECORDING_JWT_AUD = 'recording-upload'
-const DEFAULT_TTL_SEC = 120
+// Must cover the entire call duration + upload time.
+// 120s (old default) expired mid-recording; 8 hours covers any realistic session.
+const DEFAULT_TTL_SEC = 8 * 60 * 60   // 8 hours
 
 function getSecret() {
   return process.env.RECORDING_JWT_SECRET || ''

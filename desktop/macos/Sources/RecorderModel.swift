@@ -143,8 +143,14 @@ final class RecorderModel: ObservableObject {
             status = "Upload complete. You can close this window or open another link."
             try? FileManager.default.removeItem(at: fileURL)
         } catch {
-            lastError = error.localizedDescription
-            status = "Upload failed."
+            // Keep the local file on failure so the recording isn't lost.
+            let errMsg = error.localizedDescription
+            if errMsg.lowercased().contains("unauthorized") || errMsg.contains("401") {
+                lastError = "Session token expired. Open a fresh "Record with desktop app" link from the dashboard and try again. Your local recording is still saved."
+            } else {
+                lastError = errMsg
+            }
+            status = "Upload failed — local recording preserved."
         }
     }
 
