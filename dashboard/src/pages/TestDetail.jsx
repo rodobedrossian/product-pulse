@@ -15,6 +15,18 @@ function pathnameFromUrl(url) {
   }
 }
 
+function buildParticipantLink(prototypeUrl, participantTid, testId) {
+  if (!prototypeUrl || !participantTid || !testId) return ''
+  try {
+    const url = new URL(prototypeUrl)
+    url.searchParams.set('__tid', participantTid)
+    url.searchParams.set('__test_id', testId)
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
 function buildAiPrompt(snippetTag, testName, prototypeUrl) {
   return `I'm running a usability test called "${testName}" on ${prototypeUrl} using Product Pulse.
 
@@ -372,7 +384,6 @@ export default function TestDetail() {
   const [newName, setNewName] = useState('')
   const [adding, setAdding] = useState(false)
   const [addingStep, setAddingStep] = useState(false)
-  const [links, setLinks] = useState({})
   const [heartbeat, setHeartbeat] = useState(null)
   const [pendingGoal, setPendingGoal] = useState(null) // { goalKind, selector, url, stepId? }
   const [savingGoal, setSavingGoal] = useState(false)
@@ -476,13 +487,6 @@ export default function TestDetail() {
     }
   }, [id, test?.participants])
 
-  function handleRecordingUploaded(participantId, row) {
-    setRecordingsByParticipant((prev) => ({
-      ...prev,
-      [participantId]: [row, ...(prev[participantId] || [])]
-    }))
-  }
-
   async function saveResearchIntent() {
     const next = intentDraft.slice(0, RESEARCH_INTENT_MAX)
     const prev = (test.research_intent ?? '').trim()
@@ -556,11 +560,10 @@ export default function TestDetail() {
     if (!newName.trim()) return
     setAdding(true)
     try {
-      const result = await apiFetch(`/api/tests/${id}/participants`, {
+      await apiFetch(`/api/tests/${id}/participants`, {
         method: 'POST',
         body: JSON.stringify({ name: newName.trim() })
       })
-      setLinks((prev) => ({ ...prev, [result.tid]: result.link }))
       setNewName('')
       await loadTest()
     } catch (err) {
@@ -885,14 +888,14 @@ export default function TestDetail() {
               <div key={p.id} className="pp-participant-row">
                 <div className="pp-participant-row-main">
                   <span style={{ fontWeight: 600 }}>{p.name}</span>
-                  {links[p.tid] ? (
+                  {buildParticipantLink(test.prototype_url, p.tid, id) ? (
                     <div className="pp-link-row">
-                      <code>{links[p.tid]}</code>
-                      <CopyButton text={links[p.tid]} label="Copy link" />
+                      <code>{buildParticipantLink(test.prototype_url, p.tid, id)}</code>
+                      <CopyButton text={buildParticipantLink(test.prototype_url, p.tid, id)} label="Copy link" />
                     </div>
                   ) : (
                     <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
-                      Link shown once on creation — add again to get a new link
+                      Invalid prototype URL — update test prototype URL to generate participant links
                     </span>
                   )}
                 </div>
@@ -900,7 +903,6 @@ export default function TestDetail() {
                   testId={id}
                   participant={p}
                   recordings={recordingsByParticipant[p.id] || []}
-                  onUploaded={(row) => handleRecordingUploaded(p.id, row)}
                 />
               </div>
             ))}
