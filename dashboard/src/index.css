@@ -1049,9 +1049,9 @@ details.pp-details[open] summary::before {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: none;
-  background: rgba(255,255,255,0.1);
-  color: #fff;
+  border: none !important;        /* beats global button { border: 1px solid ... } */
+  background: rgba(255,255,255,0.1) !important;  /* beats button:hover:not(:disabled) */
+  color: #fff !important;         /* beats global button { color: var(--color-text) } */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1061,7 +1061,9 @@ details.pp-details[open] summary::before {
   transition: background 0.15s;
 }
 
-.pp-replay-btn:hover { background: rgba(255,255,255,0.18); }
+/* Must use !important: button:hover:not(:disabled) has specificity (0,2,1)=21pts,
+   which beats .pp-replay-btn:hover at (0,2,0)=20pts. */
+.pp-replay-btn:hover { background: rgba(255,255,255,0.18) !important; }
 .pp-replay-btn:disabled { opacity: 0.4; cursor: default; }
 
 .pp-replay-time {
@@ -1131,18 +1133,19 @@ details.pp-details[open] summary::before {
 
 .pp-replay-speed-btn {
   padding: 0.2rem 0.45rem;
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.15) !important;
   border-radius: 4px;
-  background: transparent;
-  color: rgba(255,255,255,0.5);
+  background: transparent !important;
+  color: rgba(255,255,255,0.5) !important;
   font-size: 0.72rem;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 
 .pp-replay-speed-btn:hover {
-  color: rgba(255,255,255,0.85);
-  border-color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.85) !important;
+  border-color: rgba(255,255,255,0.3) !important;
+  background: rgba(255,255,255,0.08) !important;
 }
 
 .pp-replay-speed-btn.active {

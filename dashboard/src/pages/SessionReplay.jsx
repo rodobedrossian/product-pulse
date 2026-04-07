@@ -23,11 +23,11 @@ async function fetchChunk(url) {
   return Array.isArray(data) ? data : []
 }
 
-// ── Icons (Feather-style, 24×24 viewBox) ──────────────────────────────────────
+// ── Icons (Feather-style, 24×24 viewBox, hardcoded white stroke) ──────────────
 function IconExpand() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 3H5a2 2 0 0 0-2 2v3" />
       <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
       <path d="M3 16v3a2 2 0 0 0 2 2h3" />
@@ -37,8 +37,8 @@ function IconExpand() {
 }
 function IconCompress() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 3v3a2 2 0 0 1-2 2H3" />
       <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
       <path d="M3 16h3a2 2 0 0 1 2 2v3" />
