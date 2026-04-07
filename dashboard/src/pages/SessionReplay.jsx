@@ -431,10 +431,6 @@ export default function SessionReplay() {
       </Link>
       <h1 className="pp-page-title" style={{ marginBottom: '1.5rem' }}>Session replay</h1>
 
-      {phase === 'loading' && (
-        <p className="pp-loading">{statusMsg}</p>
-      )}
-
       {phase === 'error' && (
         <div className="pp-card" style={{ borderColor: 'var(--color-danger-border)', background: 'var(--color-danger-bg)' }}>
           <p className="error" style={{ margin: 0 }}>{error}</p>
@@ -448,6 +444,18 @@ export default function SessionReplay() {
           <div className="pp-replay-outer" ref={outerRef} style={outerStyle}>
             {/* Inner: exact recorded dimensions — rrweb Replayer mounts here */}
             <div className="pp-replay-player" ref={containerRef} style={innerStyle} />
+            {phase === 'loading' && (
+              <div className="pp-replay-loader" role="status" aria-live="polite">
+                <span className="pp-replay-loader-spinner" aria-hidden />
+                <p className="pp-replay-loader-title">Preparing replay</p>
+                <p className="pp-replay-loader-subtitle">{statusMsg}</p>
+                <div className="pp-replay-loader-bars" aria-hidden>
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Controls */}
