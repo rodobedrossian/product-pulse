@@ -22,11 +22,16 @@ The repo is a monorepo: deploy **two** services from the same GitHub repository 
    | `SUPABASE_URL` | Supabase project URL |
    | `SUPABASE_ANON_KEY` | Supabase anon (public) key |
    | `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service role** key (server only) |
+   | `RECORDING_JWT_SECRET` | Long random string (`openssl rand -base64 48`) — required for **desktop recorder** deep links and uploads |
+   | `PUBLIC_API_URL` | Public URL of **this** API service (`https://…up.railway.app`), no trailing slash — same value as dashboard `VITE_API_URL` |
+   | `DESKTOP_MAC_DOWNLOAD_URL` | Optional: direct or signed URL to `.dmg` — powers **Download app** in the dashboard |
+   | `DESKTOP_WIN_DOWNLOAD_URL` | Optional: Windows installer URL |
+   | `DESKTOP_MAC_VERSION` / `DESKTOP_WIN_VERSION` | Optional display versions (defaults in code) |
 
    Railway injects **`PORT`** automatically; do not hardcode it.
 
 4. **Deploy**: Nixpacks will run `npm install` and `npm start` from `api/`.
-5. After deploy, open **Settings → Networking → Generate Domain** and copy the public URL (e.g. `https://product-pulse-api-production.up.railway.app`). You will use this as `VITE_API_URL` for the dashboard build.
+5. After deploy, open **Settings → Networking → Generate Domain** and copy the public URL (e.g. `https://product-pulse-api-production.up.railway.app`). Set **`PUBLIC_API_URL`** on the API to that same URL, and use it as **`VITE_API_URL`** for the dashboard build.
 
 The API also serves the tracking **snippet** from `/snippet/...` (files live in `snippet/` at repo root; the full repo checkout is available at runtime).
 
@@ -73,6 +78,7 @@ Point your DNS at Railway for both services and update:
 - [ ] Dashboard loads and can sign in.
 - [ ] Create a test; participant snippet uses `VITE_API_URL` for event ingestion.
 - [ ] Team invite link uses `VITE_APP_URL` in Settings.
+- [ ] Desktop recorder: API has `RECORDING_JWT_SECRET` and `PUBLIC_API_URL` equals the public API URL; optional `DESKTOP_*_DOWNLOAD_URL` for the header **Download app** button.
 
 ---
 

@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './env-bootstrap.js'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
@@ -9,11 +9,19 @@ import replayRouter from './routes/replay.js'
 import screenshotRouter from './routes/event-screenshots.js'
 import teamsRouter from './routes/teams.js'
 import mcpTokensRouter from './routes/mcpTokens.js'
+import participantRecordingsRouter from './routes/participant-recordings.js'
+import desktopRouter from './routes/desktop.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const app = express()
 const PORT = process.env.PORT || 3001
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+if (!process.env.RECORDING_JWT_SECRET?.trim()) {
+  console.warn(
+    '[api] RECORDING_JWT_SECRET is missing — POST …/recording-token will return 500. Set it in api/.env and restart.'
+  )
+}
 
 // CORS: explicit headers + OPTIONS preflight. Browsers send OPTIONS before PATCH with Authorization;
 // some proxies/edges are picky — this must run before any body parsers or routers.
@@ -38,11 +46,13 @@ app.use(express.json())
 
 app.use('/api/tests', testsRouter)
 app.use('/api/tests', participantsRouter)
+app.use('/api/tests', participantRecordingsRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api', replayRouter)
 app.use('/api', screenshotRouter)
 app.use('/api', teamsRouter)
 app.use('/api/mcp', mcpTokensRouter)
+app.use('/api/desktop', desktopRouter)
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Product Pulse API listening on 0.0.0.0:${PORT}`)

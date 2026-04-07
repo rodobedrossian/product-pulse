@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { apiFetch } from '../api.js'
 import { getAppOrigin } from '../lib/publicEnv.js'
+import { useDesktopReleases } from '../hooks/useDesktopReleases.js'
+import { detectClientDesktopOS } from '../lib/desktopPlatform.js'
 
 const BASE_URL = getAppOrigin()
 const MCP_URL = 'https://product-pulse-mcp.up.railway.app/mcp'
@@ -19,6 +22,10 @@ const ROLE_OPTIONS = [
 ]
 
 export default function Settings() {
+  const location = useLocation()
+  const { mac: desktopMac, win: desktopWin, error: desktopErr, loading: desktopLoading } =
+    useDesktopReleases()
+  const clientOS = detectClientDesktopOS()
   const { user, profile, team, inviteToken, members, refreshTeam } = useAuth()
   const [fullName, setFullName] = useState('')
   const [role, setRole] = useState('')
@@ -45,6 +52,13 @@ export default function Settings() {
   useEffect(() => {
     refreshTeam()
   }, [refreshTeam])
+
+  useEffect(() => {
+    if (location.hash !== '#desktop-app') return
+    requestAnimationFrame(() => {
+      document.getElementById('desktop-app')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [location.pathname, location.hash])
 
   useEffect(() => {
     if (profile) {
@@ -221,6 +235,103 @@ export default function Settings() {
             Your profile, team name, invite link, and teammates.
           </p>
         </div>
+      </div>
+
+      <div
+        id="desktop-app"
+        className="pp-card"
+        style={{ padding: '1.35rem 1.5rem', marginBottom: '1.25rem' }}
+      >
+        <h2 className="pp-page-title" style={{ fontSize: '1.15rem', marginBottom: '0.35rem' }}>
+          Desktop meeting recorder
+        </h2>
+        <p className="pp-muted" style={{ margin: '0 0 0.5rem', fontSize: '0.9375rem', maxWidth: '40rem' }}>
+          Install the native app once, then use <strong>Open desktop app</strong> on a participant row to capture
+          session audio (after verbal consent). Deep links include a short-lived token.
+        </p>
+        {(clientOS === 'darwin' || clientOS === 'win32') && (
+          <p className="pp-muted" style={{ margin: '0 0 1rem', fontSize: '0.8125rem', maxWidth: '44rem' }}>
+            This browser looks like{' '}
+            <strong>{clientOS === 'darwin' ? 'macOS' : 'Windows'}</strong> — we show that download first when both
+            builds are available.
+          </p>
+        )}
+        {desktopLoading && <p className="pp-muted" style={{ margin: 0 }}>Loading download links…</p>}
+        {desktopErr && !desktopLoading && (
+          <p className="pp-auth-error" style={{ margin: '0 0 0.75rem' }}>
+            {desktopErr}
+          </p>
+        )}
+        {!desktopLoading && !desktopErr && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {(clientOS === 'win32'
+              ? ['win', 'mac']
+              : ['mac', 'win']
+            ).map((which) =>
+              which === 'mac' ? (
+                <div key="mac">
+                  {desktopMac?.download_url ? (
+                    <a
+                      href={desktopMac.download_url}
+                      className={clientOS === 'darwin' ? 'primary pp-btn-sm' : 'pp-btn-sm'}
+                      rel="noreferrer"
+                      style={{ textDecoration: 'none', display: 'inline-block' }}
+                    >
+                      Download for macOS ({desktopMac.version || 'latest'})
+                    </a>
+                  ) : (
+                    <div>
+                      <p className="pp-muted" style={{ margin: '0 0 0.35rem', fontSize: '0.875rem' }}>
+                        <strong>macOS</strong> — no download link yet. Choose one:
+                      </p>
+                      <ul
+                        className="pp-muted"
+                        style={{
+                          margin: 0,
+                          paddingLeft: '1.25rem',
+                          fontSize: '0.8125rem',
+                          lineHeight: 1.5,
+                          maxWidth: '42rem'
+                        }}
+                      >
+                        <li>
+                          <strong>Team / production:</strong> upload your signed <code>.dmg</code> (e.g. Supabase
+                          Storage or S3), copy a public or signed URL, set{' '}
+                          <code style={{ fontSize: '0.75rem' }}>DESKTOP_MAC_DOWNLOAD_URL</code> on the API
+                          (Railway / <code>api/.env</code>), redeploy the API, refresh this page.
+                        </li>
+                        <li>
+                          <strong>Just you, from source:</strong> on this Mac, run{' '}
+                          <code style={{ fontSize: '0.75rem' }}>brew install xcodegen</code> (once), then{' '}
+                          <code style={{ fontSize: '0.75rem' }}>cd desktop/macos && xcodegen generate</code>, open the
+                          generated Xcode project, choose <strong>Product → Run</strong>. No dashboard link needed.
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div key="win">
+                  {desktopWin?.download_url ? (
+                    <a
+                      href={desktopWin.download_url}
+                      className={clientOS === 'win32' ? 'primary pp-btn-sm' : 'pp-btn-sm'}
+                      rel="noreferrer"
+                      style={{ textDecoration: 'none', display: 'inline-block' }}
+                    >
+                      Download for Windows ({desktopWin.version || 'latest'})
+                    </a>
+                  ) : (
+                    <p className="pp-muted" style={{ margin: 0, fontSize: '0.875rem', maxWidth: '42rem' }}>
+                      <strong>Windows</strong> — set <code style={{ fontSize: '0.8rem' }}>DESKTOP_WIN_DOWNLOAD_URL</code>{' '}
+                      on the API to a public or signed installer URL, then redeploy.
+                    </p>
+                  )}
+                </div>
+              )
+            )}
+          </div>
+        )}
       </div>
 
       <div className="pp-card" style={{ padding: '1.35rem 1.5rem', marginBottom: '1.25rem' }}>

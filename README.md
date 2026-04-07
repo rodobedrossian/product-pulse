@@ -169,14 +169,14 @@ The output `snippet/replay-bundle.js` is committed and served at `/snippet/repla
 ### API → Railway or Render
 
 1. Push `api/` to a GitHub repo (or the monorepo root).
-2. Set environment variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `PORT`.
+2. Set environment variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, plus **`RECORDING_JWT_SECRET`** (random string) and **`PUBLIC_API_URL`** (your API’s public `https://…` URL, matching dashboard `VITE_API_URL`). Optional: **`DESKTOP_MAC_DOWNLOAD_URL`** / **`DESKTOP_WIN_DOWNLOAD_URL`** for the in-app **Download app** button.
 3. Build command: `npm install` — Start command: `npm start`.
 4. The `/snippet/protopulse.js` and `/snippet/replay-bundle.js` files are served as static files from the API.
 
 ### Dashboard → Vercel
 
 1. Set the **Root Directory** to `dashboard/`.
-2. Set environment variables: `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_URL` (see [dashboard/.env.example](dashboard/.env.example)).
+2. Set environment variables: `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_URL` (see [dashboard/.env.example](dashboard/.env.example)). **`VITE_API_URL`** must be the same origin as the API’s **`PUBLIC_API_URL`** so deep links and uploads work for the desktop recorder.
 3. Build command: `npm run build` — Output directory: `dist`.
 
 ### Dashboard → Railway

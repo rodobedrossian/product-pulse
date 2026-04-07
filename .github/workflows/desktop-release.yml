@@ -1,0 +1,24 @@
+# Stub workflow for building and signing the native desktop recorder.
+# Wire this up when you have Apple Developer ID + notarization secrets and Windows cert in GitHub Actions.
+#
+# Prerequisites (do not commit secrets or .p12 to the repo):
+# - macOS: APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD, signing certificate + key in secrets
+# - Windows: code signing cert as a secret-backed file
+# - Artifacts: upload to Supabase Storage / S3 and set DESKTOP_*_DOWNLOAD_URL on the API host
+#
+# Local build (macOS):
+#   cd desktop/macos && xcodegen generate && xcodebuild -scheme ProductPulseRecorder -configuration Release archive
+
+name: Desktop recorder (stub)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: |
+          echo "Configure this workflow with xcodegen + xcodebuild (macOS runner), notarytool, and optional Windows signing."
+          echo "See desktop/macos/project.yml and api/.env.example (DESKTOP_* variables)."

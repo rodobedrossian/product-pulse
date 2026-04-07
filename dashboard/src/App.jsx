@@ -15,6 +15,7 @@ import Landing from './pages/Landing.jsx'
 import FeatureSessionReplay from './pages/FeatureSessionReplay.jsx'
 import FeatureGoalTracking from './pages/FeatureGoalTracking.jsx'
 import FeatureAI from './pages/FeatureAI.jsx'
+import DesktopAppDownloadButton from './components/DesktopAppDownloadButton.jsx'
 
 function Shell() {
   const { pathname } = useLocation()
@@ -56,6 +57,7 @@ function Shell() {
             </Link>
           </nav>
           <div className="pp-user-menu">
+            <DesktopAppDownloadButton />
             {profile?.full_name && (
               <span className="pp-user-name">{profile.full_name}</span>
             )}

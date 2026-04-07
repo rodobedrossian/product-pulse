@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
+import ParticipantAudioRecorder from '../components/ParticipantAudioRecorder.jsx'
 
 const API_URL = getApiBase() || 'http://localhost:3001'
 const RESEARCH_INTENT_MAX = 2000
@@ -378,6 +379,9 @@ export default function TestDetail() {
   const [showScript, setShowScript] = useState(false)
   const [intentDraft, setIntentDraft] = useState('')
   const [savingIntent, setSavingIntent] = useState(false)
+  const [recordingsByParticipant, setRecordingsByParticipant] = useState({})
+  const [desktopMac, setDesktopMac] = useState(null)
+  const [desktopWin, setDesktopWin] = useState(null)
 
   function loadTest() {
     return apiFetch(`/api/tests/${id}`)
@@ -419,9 +423,65 @@ export default function TestDetail() {
   }, [id])
 
   useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [mac, win] = await Promise.all([
+          apiFetch('/api/desktop/releases/latest?platform=darwin'),
+          apiFetch('/api/desktop/releases/latest?platform=win32')
+        ])
+        if (!cancelled) {
+          setDesktopMac(mac)
+          setDesktopWin(win)
+        }
+      } catch {
+        if (!cancelled) {
+          setDesktopMac(null)
+          setDesktopWin(null)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!test) return
     setIntentDraft(test.research_intent ?? '')
   }, [test?.id, test?.research_intent])
+
+  useEffect(() => {
+    if (!test?.participants?.length) {
+      setRecordingsByParticipant({})
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const next = {}
+      await Promise.all(
+        test.participants.map(async (p) => {
+          try {
+            const r = await apiFetch(`/api/tests/${id}/participants/${p.id}/recordings`)
+            next[p.id] = r.recordings || []
+          } catch {
+            next[p.id] = []
+          }
+        })
+      )
+      if (!cancelled) setRecordingsByParticipant(next)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id, test?.participants])
+
+  function handleRecordingUploaded(participantId, row) {
+    setRecordingsByParticipant((prev) => ({
+      ...prev,
+      [participantId]: [row, ...(prev[participantId] || [])]
+    }))
+  }
 
   async function saveResearchIntent() {
     const next = intentDraft.slice(0, RESEARCH_INTENT_MAX)
@@ -780,6 +840,33 @@ export default function TestDetail() {
       {/* Participants */}
       <section className="pp-card">
         <h2 className="pp-section-title">Participants ({test.participants.length})</h2>
+        <p className="pp-muted" style={{ fontSize: '0.8125rem', margin: '0 0 0.85rem', lineHeight: 1.45 }}>
+          {desktopMac?.download_url || desktopWin?.download_url ? (
+            <>
+              <span style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                Desktop meeting recorder — install once:{' '}
+              </span>
+              {desktopMac?.download_url && (
+                <a href={desktopMac.download_url} rel="noreferrer">
+                  macOS ({desktopMac.version || 'latest'})
+                </a>
+              )}
+              {desktopMac?.download_url && desktopWin?.download_url && ' · '}
+              {desktopWin?.download_url && (
+                <a href={desktopWin.download_url} rel="noreferrer">
+                  Windows ({desktopWin.version || 'latest'})
+                </a>
+              )}
+            </>
+          ) : (
+            <>
+              Record from the browser per participant, or use <strong>Open desktop app</strong> after installing
+              the native recorder. Download links appear here when your API sets{' '}
+              <code style={{ fontSize: '0.75rem' }}>DESKTOP_MAC_DOWNLOAD_URL</code> /{' '}
+              <code style={{ fontSize: '0.75rem' }}>DESKTOP_WIN_DOWNLOAD_URL</code>.
+            </>
+          )}
+        </p>
         <form className="pp-form-inline" onSubmit={handleAddParticipant}>
           <input
             placeholder="Participant name"
@@ -796,17 +883,25 @@ export default function TestDetail() {
           <div>
             {test.participants.map((p) => (
               <div key={p.id} className="pp-participant-row">
-                <span style={{ fontWeight: 600 }}>{p.name}</span>
-                {links[p.tid] ? (
-                  <div className="pp-link-row">
-                    <code>{links[p.tid]}</code>
-                    <CopyButton text={links[p.tid]} label="Copy link" />
-                  </div>
-                ) : (
-                  <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
-                    Link shown once on creation — add again to get a new link
-                  </span>
-                )}
+                <div className="pp-participant-row-main">
+                  <span style={{ fontWeight: 600 }}>{p.name}</span>
+                  {links[p.tid] ? (
+                    <div className="pp-link-row">
+                      <code>{links[p.tid]}</code>
+                      <CopyButton text={links[p.tid]} label="Copy link" />
+                    </div>
+                  ) : (
+                    <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
+                      Link shown once on creation — add again to get a new link
+                    </span>
+                  )}
+                </div>
+                <ParticipantAudioRecorder
+                  testId={id}
+                  participant={p}
+                  recordings={recordingsByParticipant[p.id] || []}
+                  onUploaded={(row) => handleRecordingUploaded(p.id, row)}
+                />
               </div>
             ))}
           </div>
