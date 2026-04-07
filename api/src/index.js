@@ -44,6 +44,9 @@ app.use('/api/replay', express.json({ limit: '8mb' }))
 app.use('/api/events', express.json({ limit: '8mb' }))
 app.use(express.json())
 
+// Health check for Railway deployment
+app.get('/health', (req, res) => res.json({ status: 'ok' }))
+
 app.use('/api/tests', testsRouter)
 app.use('/api/tests', participantsRouter)
 app.use('/api/tests', participantRecordingsRouter)
