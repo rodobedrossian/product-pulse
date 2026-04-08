@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
-// POST /api/tests/:id/participants — add participant, return sharable link
+// POST /api/tests/:id/participants — add participant, return sharable link (directed tests only)
 router.post('/:id/participants', async (req, res) => {
   const { id } = req.params
   const { name } = req.body
@@ -15,11 +15,14 @@ router.post('/:id/participants', async (req, res) => {
 
   const { data: test, error: testError } = await db
     .from('tests')
-    .select('id, prototype_url')
+    .select('id, test_type, prototype_url')
     .eq('id', id)
     .single()
 
   if (testError || !test) return res.status(404).json({ error: 'Test not found' })
+  if (test.test_type === 'observational') {
+    return res.status(400).json({ error: 'Observational tests use auto-session — use POST /auto-session instead' })
+  }
 
   const tid = randomUUID()
 
@@ -31,11 +34,17 @@ router.post('/:id/participants', async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message })
 
-  const protoUrl = new URL(test.prototype_url)
-  protoUrl.searchParams.set('__tid', tid)
-  protoUrl.searchParams.set('__test_id', id)
+  let link = ''
+  try {
+    const protoUrl = new URL(test.prototype_url)
+    protoUrl.searchParams.set('__tid', tid)
+    protoUrl.searchParams.set('__test_id', id)
+    link = protoUrl.toString()
+  } catch {
+    link = ''
+  }
 
-  res.status(201).json({ ...participant, link: protoUrl.toString() })
+  res.status(201).json({ ...participant, link })
 })
 
 // GET /api/tests/:id/results — results per participant (protected)
@@ -82,6 +91,65 @@ router.get('/:id/results', requireAuth, async (req, res) => {
 
   const replayByTid = {}
   for (const r of replayRows || []) replayByTid[r.tid] = r
+
+  // ─── Observational results ─────────────────────────────────────────────────
+  if (test.test_type === 'observational') {
+    const { data: testers } = await db
+      .from('testers')
+      .select('id, tester_key, first_seen, last_seen, session_count')
+      .eq('test_id', id)
+      .order('first_seen', { ascending: false })
+
+    const results = participants.map((p) => {
+      const events = eventsByTid[p.tid] || []
+      const startTs = events.length ? new Date(events[0].timestamp).getTime() : null
+      const endTs = events.length ? new Date(events[events.length - 1].timestamp).getTime() : null
+      const duration_ms = startTs && endTs ? endTs - startTs : null
+      const replayMeta = replayByTid[p.tid]
+      const has_replay = !!(replayMeta && replayMeta.chunk_count > 0)
+      return {
+        participant_id: p.id,
+        tid: p.tid,
+        tester_id: p.tester_id,
+        referrer: p.referrer || null,
+        browser: p.browser || null,
+        device_type: p.device_type || null,
+        ip: p.ip || null,
+        created_at: p.created_at,
+        event_count: events.length,
+        duration_ms,
+        has_replay,
+        events
+      }
+    })
+
+    // Referrer domain breakdown
+    const referrerCounts = {}
+    for (const r of results) {
+      let domain = 'Direct'
+      if (r.referrer) {
+        try { domain = new URL(r.referrer).hostname } catch { domain = r.referrer }
+      }
+      referrerCounts[domain] = (referrerCounts[domain] || 0) + 1
+    }
+    const referrers = Object.entries(referrerCounts)
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count)
+
+    const uniqueTesters = (testers || []).length
+    const returningTesters = (testers || []).filter((t) => t.session_count > 1).length
+
+    return res.json({
+      test_id: id,
+      test_type: 'observational',
+      research_intent: test.research_intent ?? null,
+      total_sessions: participants.length,
+      unique_testers: uniqueTesters,
+      returning_testers: returningTesters,
+      referrers,
+      results
+    })
+  }
 
   // ─── Scenario results ──────────────────────────────────────────────────────
   if (test.test_type === 'scenario') {

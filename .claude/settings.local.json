@@ -14,7 +14,11 @@
       "Bash(node --check src/auth.js)",
       "Bash(node --check src/index.js)",
       "Bash(node -e \":*)",
-      "Bash(find '/Users/rodrigobedrossian/Product Pulse/api/src' -name *replay*)"
+      "Bash(find '/Users/rodrigobedrossian/Product Pulse/api/src' -name *replay*)",
+      "Bash(grep -r 'CREATE TABLE' /Users/rodrigobedrossian/Product Pulse --include=*.sql)",
+      "Bash(grep -r \"referrer\\\\|utm\" /Users/rodrigobedrossian/Product Pulse --include=*.js --include=*.jsx --include=*.sql)",
+      "Bash(grep -E \"\\\\.\\(sql|ts|js\\)$\")",
+      "Bash(grep -r 'CREATE TABLE' '/Users/rodrigobedrossian/Product Pulse/api' --include=*.js --include=*.ts)"
     ]
   }
 }

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { randomUUID } from 'crypto'
 import db from '../db.js'
 import { requireAuth } from '../middleware/auth.js'
 
@@ -22,27 +23,97 @@ function normalizeResearchIntent(value) {
 router.post('/', requireAuth, async (req, res) => {
   const { name, prototype_url, start_event, goal_event, test_type, research_intent } = req.body
 
-  if (!name || !prototype_url) {
-    return res.status(400).json({ error: 'Missing required fields: name, prototype_url' })
+  const resolvedType = ['single', 'scenario', 'observational'].includes(test_type) ? test_type : 'single'
+
+  if (!name) {
+    return res.status(400).json({ error: 'Missing required field: name' })
+  }
+  if (resolvedType !== 'observational' && !prototype_url) {
+    return res.status(400).json({ error: 'Missing required field: prototype_url' })
+  }
+
+  const insertData = {
+    name,
+    test_type: resolvedType,
+    research_intent: normalizeResearchIntent(research_intent),
+    team_id: req.teamId,
+    created_by: req.user.id
+  }
+
+  if (resolvedType !== 'observational') {
+    insertData.prototype_url = prototype_url
+    insertData.start_event = start_event ?? {}
+    insertData.goal_event = goal_event ?? {}
   }
 
   const { data, error } = await db
     .from('tests')
-    .insert({
-      name,
-      prototype_url,
-      start_event: start_event ?? {},
-      goal_event: goal_event ?? {},
-      research_intent: normalizeResearchIntent(research_intent),
-      test_type: test_type === 'scenario' ? 'scenario' : 'single',
-      team_id: req.teamId,
-      created_by: req.user.id
-    })
+    .insert(insertData)
     .select()
     .single()
 
   if (error) return res.status(500).json({ error: error.message })
   res.status(201).json(data)
+})
+
+// POST /api/tests/:id/auto-session — no auth; observational snippet creates a participant session
+router.post('/:id/auto-session', async (req, res) => {
+  const { id } = req.params
+  const { tester_key, referrer, browser, device_type } = req.body
+
+  if (!tester_key) return res.status(400).json({ error: 'tester_key is required' })
+
+  const { data: test } = await db.from('tests').select('id, test_type').eq('id', id).single()
+  if (!test) return res.status(404).json({ error: 'Test not found' })
+  if (test.test_type !== 'observational') {
+    return res.status(400).json({ error: 'This endpoint is only available for observational tests' })
+  }
+
+  // Extract IP — Railway sets X-Forwarded-For
+  const forwarded = req.headers['x-forwarded-for']
+  const ip = forwarded ? forwarded.split(',')[0].trim() : (req.ip || null)
+
+  // Look up or create the tester (persistent identity across sessions)
+  let testerId
+  const { data: existingTester } = await db
+    .from('testers')
+    .select('id, session_count')
+    .eq('tester_key', tester_key)
+    .maybeSingle()
+
+  if (existingTester) {
+    testerId = existingTester.id
+    await db
+      .from('testers')
+      .update({ last_seen: new Date().toISOString(), session_count: existingTester.session_count + 1 })
+      .eq('id', testerId)
+  } else {
+    const { data: newTester, error: testerErr } = await db
+      .from('testers')
+      .insert({ test_id: id, tester_key })
+      .select('id')
+      .single()
+    if (testerErr) return res.status(500).json({ error: testerErr.message })
+    testerId = newTester.id
+  }
+
+  // Create a new participant session for this visit
+  const tid = randomUUID()
+  const { error: partErr } = await db
+    .from('participants')
+    .insert({
+      test_id: id,
+      name: null,
+      tid,
+      tester_id: testerId,
+      referrer: referrer || null,
+      browser: browser || null,
+      device_type: device_type || null,
+      ip: ip || null
+    })
+
+  if (partErr) return res.status(500).json({ error: partErr.message })
+  res.status(201).json({ tid })
 })
 
 // GET /api/tests — list tests for the current team
@@ -252,7 +323,7 @@ router.get('/:id', requireAuth, async (req, res) => {
     .from('participants')
     .select('*')
     .eq('test_id', id)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
 
   if (partError) return res.status(500).json({ error: partError.message })
 
@@ -266,7 +337,17 @@ router.get('/:id', requireAuth, async (req, res) => {
     steps = stepsData || []
   }
 
-  res.json({ ...test, participants, steps })
+  // For observational tests, include tester count
+  let testerCount = null
+  if (test.test_type === 'observational') {
+    const { count } = await db
+      .from('testers')
+      .select('id', { count: 'exact', head: true })
+      .eq('test_id', id)
+    testerCount = count ?? 0
+  }
+
+  res.json({ ...test, participants: participants || [], steps, tester_count: testerCount })
 })
 
 export default router

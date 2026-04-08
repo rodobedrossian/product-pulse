@@ -602,6 +602,7 @@ export default function TestDetail() {
   if (!test) return null
 
   const isScenario = test.test_type === 'scenario'
+  const isObservational = test.test_type === 'observational'
   const snippetSrc = `${API_URL}/api/tests/${id}/snippet.js`
   const singleTag = `<script src="${snippetSrc}"></script>`
   const twoTagVersion =
@@ -628,24 +629,29 @@ export default function TestDetail() {
           <div style={{ minWidth: 0 }}>
             <div className="pp-inline" style={{ gap: '0.5rem', marginBottom: '0.2rem' }}>
               <h1 className="pp-page-title" style={{ margin: 0 }}>{test.name}</h1>
-              <span className={`badge ${isScenario ? 'amber' : 'blue'}`} style={{ alignSelf: 'center' }}>
-                {isScenario ? 'Scenario' : 'Single goal'}
+              <span
+                className={`badge ${isScenario ? 'amber' : isObservational ? 'green' : 'blue'}`}
+                style={{ alignSelf: 'center' }}
+              >
+                {isScenario ? 'Scenario' : isObservational ? 'Observe & discover' : 'Single goal'}
               </span>
             </div>
-            <a href={test.prototype_url} target="_blank" rel="noreferrer" className="pp-proto-link">
-              {test.prototype_url}
-            </a>
+            {test.prototype_url && (
+              <a href={test.prototype_url} target="_blank" rel="noreferrer" className="pp-proto-link">
+                {test.prototype_url}
+              </a>
+            )}
           </div>
           <div className="pp-inline">
             {isScenario ? (
               <button type="button" className="pp-btn-sm" onClick={() => setShowScript(true)}>
                 📋 Script
               </button>
-            ) : (
+            ) : !isObservational ? (
               <button type="button" className="pp-btn-sm" onClick={() => openGoalPicker()}>
                 {hasGoal ? 'Redefine goal' : 'Define goal'}
               </button>
-            )}
+            ) : null}
             <Link to={`/tests/${id}/results`}>
               <button type="button" className="primary pp-btn-sm">View results</button>
             </Link>
@@ -653,7 +659,7 @@ export default function TestDetail() {
         </div>
       </div>
 
-      {!isScenario && (
+      {!isScenario && !isObservational && (
         <>
           {!String(test.research_intent || '').trim() && (
             <section className="pp-banner pp-banner--info" style={{ marginBottom: '1rem' }}>
@@ -724,7 +730,7 @@ export default function TestDetail() {
       )}
 
       {/* Single-goal display */}
-      {!isScenario && hasGoal && !pendingGoal && (
+      {!isScenario && !isObservational && hasGoal && !pendingGoal && (
         <section className="pp-banner pp-banner--success">
           <div className="pp-inline" style={{ justifyContent: 'space-between', width: '100%' }}>
             <div style={{ fontSize: '0.875rem', lineHeight: 1.5 }}>
@@ -818,11 +824,13 @@ export default function TestDetail() {
           <pre>{singleTag}</pre>
           <div className="pp-inline" style={{ marginTop: '0.5rem' }}>
             <CopyButton text={singleTag} label="Copy tag" />
-            <CopyButton
-              text={buildAiPrompt(singleTag, test.name, test.prototype_url)}
-              label="✦ Copy AI prompt"
-              className="pp-btn-sm pp-btn-ai"
-            />
+            {test.prototype_url && (
+              <CopyButton
+                text={buildAiPrompt(singleTag, test.name, test.prototype_url)}
+                label="✦ Copy AI prompt"
+                className="pp-btn-sm pp-btn-ai"
+              />
+            )}
             <a href={snippetSrc} target="_blank" rel="noreferrer" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
               Preview JS file ↗
             </a>
@@ -840,7 +848,108 @@ export default function TestDetail() {
         </details>
       </section>
 
-      {/* Participants */}
+      {/* Observational: research intent + sessions list */}
+      {isObservational && (
+        <>
+          <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
+            <label className="pp-step-field-label" style={{ display: 'block', marginBottom: 0 }}>
+              <span>What you&apos;re trying to learn</span>
+              <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem', display: 'block', marginTop: '0.2rem' }}>
+                Hypothesis or question — what this observation should answer.
+              </span>
+              <textarea
+                className="pp-step-textarea"
+                placeholder='e.g. "Where do visitors drop off before converting?" or "We believe most traffic comes from referrals."'
+                rows={3}
+                maxLength={RESEARCH_INTENT_MAX}
+                value={intentDraft}
+                onChange={(e) => setIntentDraft(e.target.value.slice(0, RESEARCH_INTENT_MAX))}
+                onBlur={saveResearchIntent}
+                disabled={savingIntent}
+                style={{ marginTop: '0.5rem' }}
+              />
+              <span className="pp-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.35rem' }}>
+                {intentDraft.length}/{RESEARCH_INTENT_MAX}{savingIntent ? ' · Saving…' : ''}
+              </span>
+            </label>
+          </section>
+
+          <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
+            <div className="pp-inline" style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <h2 className="pp-section-title" style={{ margin: 0 }}>
+                Sessions ({test.participants.length})
+                {test.tester_count != null && (
+                  <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem', marginLeft: '0.5rem' }}>
+                    · {test.tester_count} unique visitor{test.tester_count !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </h2>
+            </div>
+            {test.participants.length === 0 ? (
+              <p className="pp-muted" style={{ margin: 0 }}>
+                No sessions yet. Add the snippet to your prototype — sessions will appear here automatically as visitors arrive.
+              </p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Date</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Device</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Browser</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Referrer</th>
+                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {test.participants.map((p, i) => {
+                      const date = new Date(p.created_at)
+                      const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                      const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                      const deviceIcon = p.device_type === 'mobile' ? '📱' : p.device_type === 'tablet' ? '📟' : '🖥'
+                      let referrerDisplay = '—'
+                      if (p.referrer) {
+                        try { referrerDisplay = new URL(p.referrer).hostname } catch { referrerDisplay = p.referrer }
+                      }
+                      return (
+                        <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontWeight: 500 }}>{dateStr}</span>
+                            <span className="pp-muted" style={{ marginLeft: '0.35rem' }}>{timeStr}</span>
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            <span title={p.device_type || 'unknown'}>{deviceIcon}</span>
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
+                            {p.browser || <span className="pp-muted">—</span>}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            {p.referrer ? (
+                              <a href={p.referrer} target="_blank" rel="noreferrer" style={{ fontSize: '0.8125rem' }} title={p.referrer}>
+                                {referrerDisplay}
+                              </a>
+                            ) : (
+                              <span className="pp-muted">Direct</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
+                            <Link to={`/tests/${id}/replay/${p.tid}`} style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
+                              View replay ↗
+                            </Link>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      {/* Directed tests: Participants */}
+      {!isObservational && (
       <section className="pp-card">
         <h2 className="pp-section-title">Participants ({test.participants.length})</h2>
         <p className="pp-muted" style={{ fontSize: '0.8125rem', margin: '0 0 0.85rem', lineHeight: 1.45 }}>
@@ -909,6 +1018,7 @@ export default function TestDetail() {
           </div>
         )}
       </section>
+      )}
 
       {showScript && (
         <ScriptModal

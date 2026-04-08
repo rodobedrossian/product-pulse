@@ -11,13 +11,18 @@ export default function CreateTest() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
+  const isObservational = testType === 'observational'
+
   async function handleSubmit(e) {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
     try {
-      const body = { name, prototype_url: prototypeUrl, test_type: testType }
-      if (testType === 'single' && researchIntent.trim()) {
+      const body = { name, test_type: testType }
+      if (!isObservational) {
+        body.prototype_url = prototypeUrl
+      }
+      if (researchIntent.trim()) {
         body.research_intent = researchIntent.trim()
       }
       const test = await apiFetch('/api/tests', {
@@ -68,6 +73,11 @@ export default function CreateTest() {
               value: 'scenario',
               label: 'Scenario / Script',
               desc: 'Multiple ordered tasks with follow-up questions. Best for moderated sessions.'
+            },
+            {
+              value: 'observational',
+              label: 'Observe & discover',
+              desc: 'Add a snippet and watch how real visitors interact — no tasks, no invite links.'
             }
           ].map((opt) => (
             <label
@@ -102,37 +112,47 @@ export default function CreateTest() {
           />
         </label>
 
-        <label>
-          <span>Prototype URL</span>
-          <input
-            required
-            type="url"
-            value={prototypeUrl}
-            placeholder="https://your-prototype.com"
-            onChange={(e) => setPrototypeUrl(e.target.value)}
-          />
-        </label>
-
-        {testType === 'single' && (
-          <label style={{ marginTop: '1rem' }}>
-            <span>
-              What are you trying to learn?{' '}
-              <span className="pp-muted" style={{ fontWeight: 400 }}>(optional)</span>
-            </span>
-            <textarea
-              value={researchIntent}
-              onChange={(e) => setResearchIntent(e.target.value.slice(0, 2000))}
-              placeholder='Research question or hypothesis — e.g. "Do users notice the new pricing tier?"'
-              rows={3}
-              maxLength={2000}
-              style={{ marginTop: '0.35rem' }}
-              className="pp-step-textarea"
+        {!isObservational && (
+          <label>
+            <span>Prototype URL</span>
+            <input
+              required={!isObservational}
+              type="url"
+              value={prototypeUrl}
+              placeholder="https://your-prototype.com"
+              onChange={(e) => setPrototypeUrl(e.target.value)}
             />
-            <span className="pp-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.35rem' }}>
-              You can add or edit this on the test page. {researchIntent.length}/2000
-            </span>
           </label>
         )}
+
+        {isObservational && (
+          <p className="pp-muted" style={{ margin: '0 0 0.75rem', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+            No prototype URL needed — the snippet auto-detects sessions. You&apos;ll get the embed code on the next screen.
+          </p>
+        )}
+
+        <label style={{ marginTop: isObservational ? 0 : '1rem' }}>
+          <span>
+            What are you trying to learn?{' '}
+            <span className="pp-muted" style={{ fontWeight: 400 }}>(optional)</span>
+          </span>
+          <textarea
+            value={researchIntent}
+            onChange={(e) => setResearchIntent(e.target.value.slice(0, 2000))}
+            placeholder={
+              isObservational
+                ? 'Hypothesis or question — e.g. "Where do visitors drop off before converting?"'
+                : 'Research question or hypothesis — e.g. "Do users notice the new pricing tier?"'
+            }
+            rows={3}
+            maxLength={2000}
+            style={{ marginTop: '0.35rem' }}
+            className="pp-step-textarea"
+          />
+          <span className="pp-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.35rem' }}>
+            You can add or edit this on the test page. {researchIntent.length}/2000
+          </span>
+        </label>
 
         <div className="pp-inline" style={{ marginTop: '1.25rem' }}>
           <button type="submit" className="primary" disabled={submitting}>
