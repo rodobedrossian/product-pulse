@@ -4704,7 +4704,7 @@ select.pp-input {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  opacity: 0.45;
+  opacity: 1;
 }
 
 .pp-heatmap-canvas {
@@ -4712,6 +4712,49 @@ select.pp-input {
   inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+}
+
+.pp-heatmap-tuners {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.pp-heatmap-tuner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 6.5rem;
+}
+
+.pp-heatmap-tuner span {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+
+.pp-heatmap-tuner input[type="range"] {
+  width: 100%;
+  max-width: 120px;
+  accent-color: var(--color-accent);
+}
+
+.pp-heatmap-legend-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pp-heatmap-legend-note {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  max-width: 42rem;
 }
 
 /* Empty state */

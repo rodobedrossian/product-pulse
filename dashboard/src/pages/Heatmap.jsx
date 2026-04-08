@@ -5,81 +5,163 @@ import { getApiBase } from '../lib/publicEnv.js'
 
 const API_BASE = getApiBase()
 
-// ─── Canvas heatmap renderer ─────────────────────────────────────────────────
+const HEATMAP_PREFS_KEY = (testId) => `pp_heatmap_prefs_${testId}`
+
+const DEFAULT_SPREAD = 100
+const DEFAULT_INTENSITY = 50
+const DEFAULT_OVERLAY = 55
+
+function loadHeatmapPrefs(testId) {
+  try {
+    const raw = sessionStorage.getItem(HEATMAP_PREFS_KEY(testId))
+    if (!raw) return null
+    const o = JSON.parse(raw)
+    if (typeof o.spread !== 'number' || typeof o.intensity !== 'number' || typeof o.overlay !== 'number') return null
+    return {
+      spread: Math.min(150, Math.max(50, o.spread)),
+      intensity: Math.min(100, Math.max(0, o.intensity)),
+      overlay: Math.min(90, Math.max(35, o.overlay))
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveHeatmapPrefs(testId, prefs) {
+  try {
+    sessionStorage.setItem(HEATMAP_PREFS_KEY(testId), JSON.stringify(prefs))
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
- * Draws a radial-gradient intensity map then colourises it with a
- * blue → cyan → green → yellow → red lookup table.
- *
- * points:  [{ x, y }]  — normalised 0–1 coords
- * radius:  spread in canvas pixels per point
- * canvas:  HTMLCanvasElement
+ * Accumulate radial blobs into offscreen canvas, then colourise with percentile-based LUT.
  */
-function renderHeatmap(canvas, points, radius) {
-  if (!canvas || !points.length) return
+function renderHeatmap(canvas, options) {
+  const {
+    mode,
+    clicks = [],
+    moves = [],
+    spreadMul = 1,
+    intensity = 50,
+    gamma = 0.82
+  } = options
+
+  if (!canvas) return
   const W = canvas.width
   const H = canvas.height
   const ctx = canvas.getContext('2d')
+  const minDim = Math.min(W, H)
 
-  // ── 1. Intensity layer (offscreen) ────────────────────────────────────────
+  const rClicks = Math.max(6, minDim * 0.016 * spreadMul)
+  const rMoves = Math.max(4, minDim * 0.009 * spreadMul)
+
   const off = document.createElement('canvas')
-  off.width  = W
+  off.width = W
   off.height = H
   const oc = off.getContext('2d')
   oc.clearRect(0, 0, W, H)
-
-  // Each point adds a radial gradient blob; 'lighter' accumulates intensity.
   oc.globalCompositeOperation = 'lighter'
-  for (const pt of points) {
-    const px = pt.x * W
-    const py = pt.y * H
-    const grad = oc.createRadialGradient(px, py, 0, px, py, radius)
-    grad.addColorStop(0,   'rgba(255,255,255,0.08)')
-    grad.addColorStop(0.4, 'rgba(255,255,255,0.03)')
-    grad.addColorStop(1,   'rgba(255,255,255,0)')
-    oc.fillStyle = grad
-    oc.beginPath()
-    oc.arc(px, py, radius, 0, Math.PI * 2)
-    oc.fill()
+
+  const drawLayer = (pts, radius, centerA, midA) => {
+    for (const pt of pts) {
+      const px = pt.x * W
+      const py = pt.y * H
+      const grad = oc.createRadialGradient(px, py, 0, px, py, radius)
+      grad.addColorStop(0, `rgba(255,255,255,${centerA})`)
+      grad.addColorStop(0.45, `rgba(255,255,255,${midA})`)
+      grad.addColorStop(1, 'rgba(255,255,255,0)')
+      oc.fillStyle = grad
+      oc.beginPath()
+      oc.arc(px, py, radius, 0, Math.PI * 2)
+      oc.fill()
+    }
   }
 
-  // ── 2. Colourise using pixel-level lookup table ───────────────────────────
+  if (mode === 'clicks') {
+    drawLayer(clicks, rClicks, 0.038, 0.014)
+  } else if (mode === 'moves') {
+    drawLayer(moves, rMoves, 0.022, 0.008)
+  } else {
+    drawLayer(moves, rMoves * 0.95, 0.018, 0.006)
+    drawLayer(clicks, rClicks, 0.032, 0.012)
+  }
+
   const imgData = oc.getImageData(0, 0, W, H)
-  const data    = imgData.data
+  const data = imgData.data
 
-  // Find the maximum intensity so we can normalize the full range.
-  // Without this, a sparse heatmap clusters at the bottom of the LUT
-  // and everything looks uniformly blue/transparent with no red hot spots.
-  let maxIntensity = 0
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i] > maxIntensity) maxIntensity = data[i]
+    let v = data[i]
+    if (v === 0) continue
+    v = Math.min(255, Math.sqrt(v / 255) * 255)
+    data[i] = Math.round(v)
   }
-  if (maxIntensity === 0) return  // nothing to draw
 
-  // LUT: intensity (0–255) → [r, g, b, a]
+  const hist = new Uint32Array(256)
+  let nz = 0
+  for (let i = 0; i < data.length; i += 4) {
+    const v = data[i]
+    if (v > 0) {
+      hist[v]++
+      nz++
+    }
+  }
+
+  if (nz === 0) {
+    ctx.clearRect(0, 0, W, H)
+    return
+  }
+
+  const hiPercentile = 98 - (intensity / 100) * 10
+  const target = Math.max(1, Math.ceil(nz * (hiPercentile / 100)))
+  let cum = 0
+  let hi = 255
+  for (let v = 1; v <= 255; v++) {
+    cum += hist[v]
+    if (cum >= target) {
+      hi = v
+      break
+    }
+  }
+
+  const lo = 0
+  let maxFallback = 0
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] > maxFallback) maxFallback = data[i]
+  }
+
   const lut = buildLut()
-  const scale = 255 / maxIntensity  // stretch hottest pixel to LUT[255] (red)
+  const useMax = hi <= lo + 1 || maxFallback === 0
 
   for (let i = 0; i < data.length; i += 4) {
-    const raw = data[i]   // red channel = brightness from 'lighter' blend
-    if (raw === 0) { data[i + 3] = 0; continue }
-    // Normalize then apply a power curve so mid-density areas show green/yellow
-    // Exponent < 1 boosts mid-range; 0.7 keeps good spread without over-compressing
-    const normalized = Math.min(255, Math.round(Math.pow(raw * scale / 255, 0.7) * 255))
-    const c = lut[normalized]
-    data[i]     = c[0]
+    let raw = data[i]
+    if (raw === 0) {
+      data[i + 3] = 0
+      continue
+    }
+    raw = Math.min(raw, 252)
+    let t
+    if (useMax) {
+      t = maxFallback > 0 ? raw / maxFallback : 0
+    } else {
+      t = (raw - lo) / (hi - lo)
+    }
+    t = Math.max(0, Math.min(1, t))
+    t = Math.pow(t, gamma)
+    const idx = Math.min(255, Math.round(t * 255))
+    const c = lut[idx]
+    data[i] = c[0]
     data[i + 1] = c[1]
     data[i + 2] = c[2]
     data[i + 3] = c[3]
   }
-  oc.putImageData(imgData, 0, 0)
 
-  // ── 3. Composite onto main canvas ────────────────────────────────────────
+  oc.putImageData(imgData, 0, 0)
   ctx.clearRect(0, 0, W, H)
   ctx.drawImage(off, 0, 0)
 }
 
-/** Transparent → blue → cyan → green → yellow → red colour ramp */
 function buildLut() {
   const lut = new Array(256)
   for (let i = 0; i < 256; i++) {
@@ -103,96 +185,123 @@ function buildLut() {
   return lut
 }
 
-// ─── Page component ──────────────────────────────────────────────────────────
-
 export default function Heatmap() {
   const { id } = useParams()
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState(null)
-  const [pages, setPages]       = useState([])
-  const [selected, setSelected] = useState(null)   // page object
-  const [mode, setMode]         = useState('clicks') // 'clicks' | 'moves' | 'all'
-  const [bgUrl, setBgUrl]       = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [pages, setPages] = useState([])
+  const [selected, setSelected] = useState(null)
+  const [mode, setMode] = useState('clicks')
+  const [bgUrl, setBgUrl] = useState(null)
 
-  const canvasRef  = useRef(null)
-  const wrapRef    = useRef(null)
+  const [spread, setSpread] = useState(DEFAULT_SPREAD)
+  const [intensity, setIntensity] = useState(DEFAULT_INTENSITY)
+  const [overlay, setOverlay] = useState(DEFAULT_OVERLAY)
 
-  // ── Load heatmap data ──────────────────────────────────────────────────────
+  const canvasRef = useRef(null)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    const p = loadHeatmapPrefs(id)
+    if (p) {
+      setSpread(p.spread)
+      setIntensity(p.intensity)
+      setOverlay(p.overlay)
+    }
+  }, [id])
+
+  useEffect(() => {
+    saveHeatmapPrefs(id, { spread, intensity, overlay })
+  }, [id, spread, intensity, overlay])
+
   useEffect(() => {
     apiFetch(`/api/tests/${id}/heatmap`)
-      .then(d => {
+      .then((d) => {
         setPages(d.pages || [])
         if (d.pages?.length) setSelected(d.pages[0])
       })
-      .catch(e => setError(e.message))
+      .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [id])
 
-  // ── Fetch signed screenshot URL when selected page changes ────────────────
   useEffect(() => {
     setBgUrl(null)
     if (!selected?.background_path) return
-    // Find the event id from the path: {test_id}/{tid}/{event_id}.ext
     const parts = selected.background_path.split('/')
     const eventFile = parts[2]
     if (!eventFile) return
     const eventId = eventFile.split('.')[0]
-    // Use the existing screenshot proxy endpoint
     fetch(`${API_BASE}/api/tests/${id}/events/${eventId}/screenshot`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('pp_token') || ''}` }
     })
-      .then(r => r.ok ? r.blob() : null)
-      .then(b => b ? setBgUrl(URL.createObjectURL(b)) : null)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => (b ? setBgUrl(URL.createObjectURL(b)) : null))
       .catch(() => {})
   }, [selected?.background_path, id])
 
-  // ── Redraw canvas whenever data or mode changes ────────────────────────────
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
-    const wrap   = wrapRef.current
+    const wrap = wrapRef.current
     if (!canvas || !selected) return
 
-    // Size canvas to match wrapper (or a 16:9 fallback)
-    const W = wrap?.clientWidth  || 800
-    const H = wrap?.clientHeight || Math.round(W * 9 / 16)
-    canvas.width  = W
+    const W = wrap?.clientWidth || 800
+    const H = wrap?.clientHeight || Math.round((W * 9) / 16)
+    canvas.width = W
     canvas.height = H
 
-    const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, W, H)
+    const clicks = selected.clicks || []
+    const moves = selected.moves || []
+    const hasClicks = clicks.length > 0
+    const hasMoves = moves.length > 0
 
-    let points = []
-    if (mode === 'clicks' || mode === 'all') points = points.concat(selected.clicks || [])
-    if (mode === 'moves'  || mode === 'all') points = points.concat(selected.moves  || [])
+    if (!hasClicks && !hasMoves) return
 
-    const radius = mode === 'moves' ? 18 : 32
-    renderHeatmap(canvas, points, radius)
-  }, [selected, mode])
+    let renderMode = mode
+    if (mode === 'clicks' && !hasClicks && hasMoves) renderMode = 'moves'
+    if (mode === 'moves' && !hasMoves && hasClicks) renderMode = 'clicks'
 
-  useEffect(() => { redraw() }, [redraw])
+    renderHeatmap(canvas, {
+      mode: renderMode,
+      clicks,
+      moves,
+      spreadMul: spread / 100,
+      intensity,
+      gamma: 0.82
+    })
+  }, [selected, mode, spread, intensity])
 
-  // Redraw on window resize
+  useEffect(() => {
+    redraw()
+  }, [redraw])
+
   useEffect(() => {
     window.addEventListener('resize', redraw)
     return () => window.removeEventListener('resize', redraw)
   }, [redraw])
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) return <p className="pp-loading">Loading heatmap…</p>
-  if (error)   return <p className="error">Error: {error}</p>
+  if (error) return <p className="error">Error: {error}</p>
 
-  const points = selected
-    ? (mode === 'clicks' ? selected.clicks : mode === 'moves' ? selected.moves
-        : [...(selected.clicks || []), ...(selected.moves || [])]).length
+  const pointCount = selected
+    ? mode === 'clicks'
+      ? selected.clicks?.length || 0
+      : mode === 'moves'
+        ? selected.moves?.length || 0
+        : (selected.clicks?.length || 0) + (selected.moves?.length || 0)
     : 0
+
+  const hiPercentileLabel = Math.round(98 - (intensity / 100) * 10)
+  const hotFractionPct = Math.max(1, 100 - hiPercentileLabel)
 
   return (
     <div className="pp-heatmap-layout">
-
-      {/* ── Sidebar: page list ─────────────────────────────────────────── */}
       <aside className="pp-heatmap-sidebar">
         <div className="pp-heatmap-sidebar-head">
-          <Link to={`/tests/${id}/results`} className="pp-back-link" style={{ display: 'block', marginBottom: '0.75rem' }}>
+          <Link
+            to={`/tests/${id}/results`}
+            className="pp-back-link"
+            style={{ display: 'block', marginBottom: '0.75rem' }}
+          >
             ← Results
           </Link>
           <p className="pp-kicker" style={{ marginBottom: '0.25rem' }}>Pages</p>
@@ -203,7 +312,7 @@ export default function Heatmap() {
             No data yet
           </p>
         ) : (
-          pages.map(page => (
+          pages.map((page) => (
             <button
               key={page.path}
               type="button"
@@ -213,17 +322,14 @@ export default function Heatmap() {
               <span className="pp-heatmap-page-path" title={page.path}>{page.path}</span>
               <span className="pp-heatmap-page-meta">
                 {page.click_count > 0 && <span>{page.click_count} clicks</span>}
-                {page.move_count  > 0 && <span>{page.move_count} moves</span>}
+                {page.move_count > 0 && <span>{page.move_count} moves</span>}
               </span>
             </button>
           ))
         )}
       </aside>
 
-      {/* ── Main: canvas heatmap ───────────────────────────────────────── */}
       <main className="pp-heatmap-main">
-
-        {/* Controls */}
         <div className="pp-heatmap-controls">
           <div style={{ minWidth: 0 }}>
             <span className="pp-kicker" style={{ marginBottom: '0.1rem', display: 'block' }}>Heatmap</span>
@@ -232,8 +338,8 @@ export default function Heatmap() {
             </span>
           </div>
 
-          <div className="pp-inline" style={{ gap: '0.4rem' }}>
-            {['clicks', 'moves', 'all'].map(m => (
+          <div className="pp-inline pp-heatmap-mode-row" style={{ gap: '0.4rem', flexWrap: 'wrap' }}>
+            {['clicks', 'moves', 'all'].map((m) => (
               <button
                 key={m}
                 type="button"
@@ -245,13 +351,45 @@ export default function Heatmap() {
             ))}
           </div>
 
+          <div className="pp-heatmap-tuners">
+            <label className="pp-heatmap-tuner">
+              <span>Spread</span>
+              <input
+                type="range"
+                min={50}
+                max={150}
+                value={spread}
+                onChange={(e) => setSpread(Number(e.target.value))}
+              />
+            </label>
+            <label className="pp-heatmap-tuner">
+              <span>Contrast</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={intensity}
+                onChange={(e) => setIntensity(Number(e.target.value))}
+              />
+            </label>
+            <label className="pp-heatmap-tuner">
+              <span>Overlay</span>
+              <input
+                type="range"
+                min={35}
+                max={90}
+                value={overlay}
+                onChange={(e) => setOverlay(Number(e.target.value))}
+              />
+            </label>
+          </div>
+
           <span className="pp-muted" style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-            {points.toLocaleString()} point{points !== 1 ? 's' : ''}
+            {pointCount.toLocaleString()} point{pointCount !== 1 ? 's' : ''}
           </span>
         </div>
 
-        {/* Canvas area */}
-        {!selected || (selected.clicks.length === 0 && selected.moves.length === 0) ? (
+        {!selected || ((selected.clicks?.length ?? 0) === 0 && (selected.moves?.length ?? 0) === 0) ? (
           <div className="pp-heatmap-empty">
             <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔥</div>
             <p style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>No heatmap data yet</p>
@@ -270,14 +408,23 @@ export default function Heatmap() {
                   onLoad={redraw}
                 />
               )}
-              <canvas ref={canvasRef} className="pp-heatmap-canvas" />
+              <canvas
+                ref={canvasRef}
+                className="pp-heatmap-canvas"
+                style={{ opacity: overlay / 100 }}
+              />
             </div>
 
-            {/* Legend */}
-            <div className="pp-heatmap-legend">
-              <span className="pp-muted" style={{ fontSize: '0.75rem' }}>Low</span>
-              <div className="pp-heatmap-gradient" />
-              <span className="pp-muted" style={{ fontSize: '0.75rem' }}>High</span>
+            <div className="pp-heatmap-legend-block">
+              <div className="pp-heatmap-legend">
+                <span className="pp-muted" style={{ fontSize: '0.75rem' }}>Low</span>
+                <div className="pp-heatmap-gradient" />
+                <span className="pp-muted" style={{ fontSize: '0.75rem' }}>High</span>
+              </div>
+              <p className="pp-heatmap-legend-note">
+                Relative activity on this page. The red end of the scale highlights roughly the hottest{' '}
+                {hotFractionPct}% of the map (adjust with Contrast).
+              </p>
             </div>
           </>
         )}
