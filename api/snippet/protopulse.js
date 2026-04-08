@@ -211,462 +211,580 @@
     return  // skip all participant tracking
   }
 
-  // ─── TRACKER MODE ────────────────────────────────────────────────────────────
+  // ─── TRACKER / OBSERVATIONAL MODE ───────────────────────────────────────────
 
+  // No test ID at all → bail immediately
+  if (!testId) return
+
+  // Try to read an existing tracked session from URL or sessionStorage
   var tid = params.get('__tid') || sessionStorage.getItem('__pp_tid')
 
-  // If no tid, this session is not being tracked — bail immediately
-  if (!tid || !testId) return
-
-  sessionStorage.setItem('__pp_tid', tid)
-  sessionStorage.setItem('__pp_test_id', testId)
-
-  // Hook called after every tracked event — assigned by the task overlay once ready
-  var _ppOnEvent = null
-
-  // ─── Screenshot capture helper ────────────────────────────────────────────
-  var _screenshotReady = false
-  var _screenshotLoading = false
-
-  function ensureScreenshotLib(cb) {
-    if (_screenshotReady) { cb(); return }
-    if (_screenshotLoading) {
-      var iv = setInterval(function () {
-        if (_screenshotReady) { clearInterval(iv); cb() }
-      }, 100)
-      return
-    }
-    _screenshotLoading = true
-    var sc = document.createElement('script')
-    sc.src = API_URL + '/snippet/screenshot-bundle.js'
-    sc.onload = function () { _screenshotReady = true; cb() }
-    sc.onerror = function () { _screenshotReady = false; _screenshotLoading = false }
-    document.head.appendChild(sc)
-  }
-
-  // --- Core send function ---
-  // Sends the event immediately (without screenshot), then fires a follow-up
-  // request with the screenshot attached once html2canvas finishes.
-  function send(type, selector, url, metadata) {
-    var cleanedUrl = cleanUrl(url || location.href)
-    var ts = new Date().toISOString()
-    var payload = {
-      tid: tid,
-      test_id: testId,
-      type: type,
-      selector: selector || null,
-      url: cleanedUrl,
-      metadata: metadata || null,
-      timestamp: ts
-    }
-
-    // Capture screenshot in parallel; send event data with it in a single request.
-    // If the lib isn't loaded yet, send without screenshot so events aren't delayed.
-    if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
-      window.__ppCaptureScreenshot().then(function (dataUrl) {
-        if (dataUrl) payload.screenshot = dataUrl
-        fetch(API_URL + '/api/events', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).catch(function () {})
-      }).catch(function () {
-        fetch(API_URL + '/api/events', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).catch(function () {})
-      })
-    } else {
-      fetch(API_URL + '/api/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true
-      }).catch(function () {})
-    }
-
-    // Notify overlay (non-blocking)
-    if (_ppOnEvent) _ppOnEvent(type, selector || null, cleanedUrl)
-  }
-
-  // --- Extract visible text from a clicked element ---
-  function getClickText(el) {
-    var node = el
-    for (var i = 0; i < 3; i++) {
-      if (!node) break
-      var text = (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim()
-      if (text) return text.slice(0, 80)
-      node = node.parentElement
-    }
-    return null
-  }
-
-  // --- Click tracking (capture phase) ---
-  document.addEventListener(
-    'click',
-    function (e) {
-      var text = getClickText(e.target)
-      send('click', buildSelector(e.target), location.href, text ? { text: text } : null)
-    },
-    true
-  )
-
-  // --- Input change tracking (selector only, never the value) ---
-  document.addEventListener(
-    'change',
-    function (e) {
-      send('input_change', buildSelector(e.target), location.href, { tagName: e.target.tagName })
-    },
-    true
-  )
-
-  // --- URL / navigation tracking ---
-  // Delay slightly so the new page content paints before the screenshot fires.
-  function trackUrl() {
-    setTimeout(function () {
-      send('url_change', null, location.href, null)
-    }, 150)
-  }
-
-  // Re-inject __tid/__test_id into SPA navigation URLs so they survive React Router
-  function injectParamsIntoUrl(url) {
-    if (!url) return url
-    try {
-      var u = new URL(url, location.href)
-      u.searchParams.set('__tid', tid)
-      u.searchParams.set('__test_id', testId)
-      return u.toString()
-    } catch (e) { return url }
-  }
-
-  var origPush = history.pushState
-  history.pushState = function (state, title, url) {
-    origPush.call(history, state, title, injectParamsIntoUrl(url))
-    trackUrl()
-  }
-  var origReplace = history.replaceState
-  history.replaceState = function (state, title, url) {
-    origReplace.call(history, state, title, injectParamsIntoUrl(url))
-    trackUrl()
-  }
-  window.addEventListener('popstate', trackUrl)
-  window.addEventListener('hashchange', trackUrl)
-
-  // --- Link propagation ---
-  function propagateLinks() {
-    var links = document.querySelectorAll('a[href]')
-    for (var i = 0; i < links.length; i++) {
-      try {
-        var href = new URL(links[i].href)
-        if (href.origin === location.origin) {
-          href.searchParams.set('__tid', tid)
-          href.searchParams.set('__test_id', testId)
-          links[i].href = href.toString()
-        }
-      } catch (e) {}
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', propagateLinks)
+  if (tid) {
+    // Normal directed mode (single / scenario) — start tracking immediately
+    beginTracking(testId, tid, true)
   } else {
-    propagateLinks()
-  }
-
-  var observer = new MutationObserver(function (mutations) {
-    for (var i = 0; i < mutations.length; i++) {
-      if (mutations[i].addedNodes.length) { propagateLinks(); break }
-    }
-  })
-  observer.observe(document.documentElement, { childList: true, subtree: true })
-
-  // --- Public API ---
-  window.ProtoPulse = {
-    apiUrl: API_URL,
-    track: function (eventName, metadata) {
-      send(eventName, null, location.href, metadata || null)
-    }
-  }
-
-  // Track initial pageview
-  send('url_change', null, location.href, null)
-
-  // ─── SESSION REPLAY ──────────────────────────────────────────────────────────
-  // Starts automatically — no consent banner needed for recruited usability tests.
-  // All inputs are masked (maskAllInputs: true). No audio/video is captured.
-
-  var s = document.createElement('script')
-  s.src = API_URL + '/snippet/replay-bundle.js'
-  s.onload = function () {
-    if (typeof window.__ppStartReplay === 'function') {
-      window.__ppStartReplay({ apiUrl: API_URL, tid: tid, testId: testId })
-    }
-  }
-  document.head.appendChild(s)
-
-  // ─── SCREENSHOT CAPTURE ───────────────────────────────────────────────────
-  // Pre-load html2canvas so it's ready before the first click event fires.
-  ensureScreenshotLib(function () {})
-
-  // ─── PARTICIPANT TASK OVERLAY ────────────────────────────────────────────────
-  // For scenario tests only. Shows the current task in a floating card and plays
-  // a success animation when the participant completes each step goal.
-
-  ;(function () {
-    var steps = []
-    var currentIdx = 0
-    var completing = false // guard double-fire
-    var overlayEl = null
-
-    // Mirror of server matchesGoal — kept in sync manually.
-    // AND logic: when both selector and url_pattern are set, both must match.
-    function clientMatchesGoal(type, sel, url, def) {
-      if (!def || !def.type) return false
-      if (type !== def.type) return false
-      var hasSel = def.selector && def.selector !== ''
-      var hasUrl = def.url_pattern && def.url_pattern !== ''
-      if (!hasSel && !hasUrl) return true
-      if (hasSel && hasUrl) {
-        return sel === def.selector && !!url && url.indexOf(def.url_pattern) !== -1
-      }
-      if (hasSel) return sel === def.selector
-      return !!url && url.indexOf(def.url_pattern) !== -1
-    }
-
-    // Inject CSS once
-    function injectStyles() {
-      if (document.getElementById('__pp-ov-css')) return
-      var st = document.createElement('style')
-      st.id = '__pp-ov-css'
-      st.textContent = [
-        '#__pp-ov{',
-          'position:fixed;bottom:16px;right:16px;width:272px;z-index:2147483640;',
-          'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
-          'border-radius:14px;overflow:hidden;',
-          'box-shadow:0 12px 40px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.2);',
-          'transition:opacity .35s,transform .35s cubic-bezier(.22,1,.36,1);',
-        '}',
-        '#__pp-ov.__pp-hidden{opacity:0;transform:translateY(12px);pointer-events:none}',
-        '.__pp-task{padding:14px 16px 16px;background:#18181b;color:#fff;animation:__ppSlideIn .4s cubic-bezier(.22,1,.36,1)}',
-        '.__pp-step-lbl{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#52525b;margin-bottom:5px}',
-        '.__pp-task-title{font-size:13px;font-weight:700;color:#fff;margin-bottom:7px;line-height:1.35}',
-        '.__pp-divider{height:1px;background:rgba(255,255,255,.08);margin-bottom:9px}',
-        '.__pp-task-body{font-size:12.5px;line-height:1.55;color:#a1a1aa}',
-        '.__pp-no-task{padding:12px 16px;background:#18181b;color:#52525b;font-size:12px;text-align:center}',
-        /* success panel */
-        '.__pp-success{padding:22px 16px 20px;background:#15803d;color:#fff;',
-          'display:flex;flex-direction:column;align-items:center;text-align:center;',
-          'position:relative;overflow:hidden;animation:__ppSlideIn .3s cubic-bezier(.22,1,.36,1)',
-        '}',
-        '.__pp-check-wrap{width:52px;height:52px;margin-bottom:11px;',
-          'animation:__ppCheckPop .45s cubic-bezier(.34,1.56,.64,1) .05s both',
-        '}',
-        '.__pp-check-svg path{stroke-dasharray:29;stroke-dashoffset:29;animation:__ppDrawCheck .4s cubic-bezier(.22,1,.36,1) .2s forwards}',
-        '.__pp-ok-title{font-size:15px;font-weight:700;margin-bottom:3px}',
-        '.__pp-ok-sub{font-size:11.5px;color:rgba(255,255,255,.7)}',
-        /* particles */
-        '.__pp-pt{position:absolute;width:7px;height:7px;border-radius:50%;',
-          'top:50%;left:50%;',
-          'animation:__ppFly .65s ease-out both',
-        '}',
-        /* all-done panel */
-        '.__pp-done{padding:18px 16px;background:#18181b;color:#fff;',
-          'display:flex;flex-direction:column;align-items:center;text-align:center;',
-          'animation:__ppSlideIn .4s cubic-bezier(.22,1,.36,1)',
-        '}',
-        '.__pp-done-emoji{font-size:28px;margin-bottom:8px}',
-        '.__pp-done-title{font-size:14px;font-weight:700;margin-bottom:4px}',
-        '.__pp-done-sub{font-size:12px;color:#71717a}',
-        /* keyframes */
-        '@keyframes __ppSlideIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}',
-        '@keyframes __ppCheckPop{from{transform:scale(0) rotate(-20deg)}to{transform:scale(1) rotate(0)}}',
-        '@keyframes __ppDrawCheck{to{stroke-dashoffset:0}}',
-        '@keyframes __ppFly{0%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(0);opacity:0}}',
-        '@keyframes __ppFadeOut{to{opacity:0;transform:translateY(-8px)}}'
-      ].join('')
-      document.head.appendChild(st)
-    }
-
-    // Build a success panel with checkmark + particles
-    function buildSuccessPanel(isLast) {
-      var div = document.createElement('div')
-      div.className = '__pp-success'
-
-      // Particles — 8 dots fanned around the center
-      var ptColors = ['#4ade80','#86efac','#fde68a','#fbbf24','#a5f3fc','#67e8f9','#c4b5fd','#f9a8d4']
-      var angles = [0,45,90,135,180,225,270,315]
-      for (var i = 0; i < 8; i++) {
-        var pt = document.createElement('div')
-        pt.className = '__pp-pt'
-        var rad = angles[i] * Math.PI / 180
-        pt.style.cssText = [
-          '--dx:' + Math.round(Math.cos(rad) * 44) + 'px',
-          '--dy:' + Math.round(Math.sin(rad) * 44) + 'px',
-          'background:' + ptColors[i],
-          'animation-delay:' + (i * 0.03) + 's'
-        ].join(';')
-        div.appendChild(pt)
-      }
-
-      // Checkmark SVG
-      var wrap = document.createElement('div')
-      wrap.className = '__pp-check-wrap'
-      wrap.innerHTML = '<svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" class="__pp-check-svg">' +
-        '<circle cx="14" cy="14" r="13" fill="rgba(255,255,255,.15)"/>' +
-        '<path d="M8 14.5 L12.5 19 L20.5 10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-        '</svg>'
-      div.appendChild(wrap)
-
-      var title = document.createElement('div')
-      title.className = '__pp-ok-title'
-      title.textContent = isLast ? 'All done!' : 'Nice work!'
-      div.appendChild(title)
-
-      var sub = document.createElement('div')
-      sub.className = '__pp-ok-sub'
-      sub.textContent = isLast ? 'You\'ve completed all tasks.' : 'Moving to the next task\u2026'
-      div.appendChild(sub)
-
-      return div
-    }
-
-    // Build a task panel for the given step
-    function buildTaskPanel(step, total) {
-      var div = document.createElement('div')
-      div.className = '__pp-task'
-
-      if (!step.task && !step.title) {
-        var empty = document.createElement('div')
-        empty.className = '__pp-no-task'
-        empty.textContent = 'Complete the task to continue.'
-        div.appendChild(empty)
-        return div
-      }
-
-      var lbl = document.createElement('div')
-      lbl.className = '__pp-step-lbl'
-      lbl.textContent = 'Task ' + step.order_index + ' of ' + total
-      div.appendChild(lbl)
-
-      if (step.title) {
-        var ttl = document.createElement('div')
-        ttl.className = '__pp-task-title'
-        ttl.textContent = step.title
-        div.appendChild(ttl)
-      }
-
-      if (step.task) {
-        if (step.title) {
-          var hr = document.createElement('div')
-          hr.className = '__pp-divider'
-          div.appendChild(hr)
-        }
-        var body = document.createElement('div')
-        body.className = '__pp-task-body'
-        body.textContent = step.task
-        div.appendChild(body)
-      }
-
-      return div
-    }
-
-    // Build the "all tasks complete" panel
-    function buildDonePanel() {
-      var div = document.createElement('div')
-      div.className = '__pp-done'
-      var emoji = document.createElement('div')
-      emoji.className = '__pp-done-emoji'
-      emoji.textContent = '\uD83C\uDF89'
-      div.appendChild(emoji)
-      var ttl = document.createElement('div')
-      ttl.className = '__pp-done-title'
-      ttl.textContent = 'All tasks complete'
-      div.appendChild(ttl)
-      var sub = document.createElement('div')
-      sub.className = '__pp-done-sub'
-      sub.textContent = 'Thanks for participating!'
-      div.appendChild(sub)
-      return div
-    }
-
-    function showStep(idx) {
-      if (!overlayEl) return
-      overlayEl.innerHTML = ''
-      overlayEl.classList.remove('__pp-hidden')
-      overlayEl.appendChild(buildTaskPanel(steps[idx], steps.length))
-    }
-
-    function triggerSuccess(idx) {
-      if (!overlayEl) return
-      var isLast = idx >= steps.length - 1
-      overlayEl.innerHTML = ''
-      overlayEl.appendChild(buildSuccessPanel(isLast))
-
-      setTimeout(function () {
-        if (!overlayEl) return
-        if (isLast) {
-          // Stop replay recording — all tasks complete
-          if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
-          // Show done panel, then fade out
-          overlayEl.innerHTML = ''
-          overlayEl.appendChild(buildDonePanel())
-          setTimeout(function () {
-            if (overlayEl) {
-              overlayEl.style.animation = '__ppFadeOut .5s ease forwards'
-              setTimeout(function () {
-                if (overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl)
-              }, 500)
-            }
-          }, 3500)
-        } else {
-          // Advance to next task
-          currentIdx = idx + 1
-          completing = false
-          showStep(currentIdx)
-        }
-      }, 2000)
-    }
-
-    // Fetch scenario tasks and boot the overlay
+    // No tid in URL — check if this test is observational (auto-session)
     fetch(API_URL + '/api/tests/' + testId + '/tasks')
-      .then(function (r) { return r.json() })
+      .then(function (r) { return r.ok ? r.json() : null })
       .then(function (data) {
-        // ── Single-goal: stop replay the moment the goal fires ──────────────
-        if (data.test_type === 'single' && data.goal_event && data.goal_event.type) {
-          _ppOnEvent = function (type, sel, url) {
-            if (clientMatchesGoal(type, sel, url, data.goal_event)) {
-              _ppOnEvent = null // unhook so it only fires once
-              if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
-            }
-          }
-          return
-        }
-
-        if (data.test_type !== 'scenario') return
-        steps = (data.steps || []).filter(function (s) { return s.task || s.title })
-        if (!steps.length) return
-
-        injectStyles()
-        overlayEl = document.createElement('div')
-        overlayEl.id = '__pp-ov'
-        overlayEl.className = '__pp-hidden'
-
-        function mount() { document.body.appendChild(overlayEl); showStep(0) }
-        if (document.body) mount()
-        else document.addEventListener('DOMContentLoaded', mount)
-
-        // Wire up the event hook so every tracked event is checked against the current step
-        _ppOnEvent = function (type, sel, url) {
-          if (completing || currentIdx >= steps.length) return
-          var step = steps[currentIdx]
-          if (clientMatchesGoal(type, sel, url, step.goal_event)) {
-            completing = true
-            triggerSuccess(currentIdx)
-          }
+        if (data && data.test_type === 'observational') {
+          initObservational(testId)
         }
       })
       .catch(function () {})
-  })()
+  }
+
+  // ─── OBSERVATIONAL INIT ──────────────────────────────────────────────────────
+
+  var OBS_LS_PREFIX  = '__pp_tk_'    // localStorage: persistent tester key
+  var OBS_TID_PREFIX = '__pp_otid_'  // sessionStorage: session tid
+  var OBS_TS_PREFIX  = '__pp_ots_'   // sessionStorage: last-activity timestamp
+  var INACTIVITY_MS  = 30 * 60 * 1000  // 30 minutes
+
+  function detectBrowser(ua) {
+    if (/Edg\//i.test(ua))                                    return 'Edge '    + ((ua.match(/Edg\/(\d+)/)      || [])[1] || '')
+    if (/Chrome\/(\d+)/i.test(ua) && !/OPR|Opera/i.test(ua)) return 'Chrome '  + ((ua.match(/Chrome\/(\d+)/i)  || [])[1] || '')
+    if (/Firefox\/(\d+)/i.test(ua))                           return 'Firefox ' + ((ua.match(/Firefox\/(\d+)/i) || [])[1] || '')
+    if (/Safari\//i.test(ua) && !/Chrome/i.test(ua))          return 'Safari '  + ((ua.match(/Version\/(\d+)/i) || [])[1] || '')
+    if (/OPR\/(\d+)/i.test(ua))                               return 'Opera '   + ((ua.match(/OPR\/(\d+)/i)     || [])[1] || '')
+    return 'Unknown'
+  }
+
+  function initObservational(resolvedTestId) {
+    // 1. Persistent tester key in localStorage (survives tab/session close)
+    var lsKey = OBS_LS_PREFIX + resolvedTestId
+    var testerKey = null
+    try { testerKey = localStorage.getItem(lsKey) } catch (e) {}
+    if (!testerKey) {
+      testerKey = 'pp_' + Math.random().toString(36).slice(2, 14)
+      try { localStorage.setItem(lsKey, testerKey) } catch (e) {}
+    }
+
+    // 2. Session boundary: reuse session if active within 30 min
+    var ssKey = OBS_TID_PREFIX + resolvedTestId
+    var tsKey = OBS_TS_PREFIX  + resolvedTestId
+    var existingTid = null
+    var lastTs = 0
+    try {
+      existingTid = sessionStorage.getItem(ssKey)
+      lastTs = parseInt(sessionStorage.getItem(tsKey) || '0', 10)
+    } catch (e) {}
+
+    if (existingTid && (Date.now() - lastTs <= INACTIVITY_MS)) {
+      // Resume existing session — start tracking immediately, no API call needed
+      try { sessionStorage.setItem(tsKey, String(Date.now())) } catch (e) {}
+      beginTracking(resolvedTestId, existingTid, false)
+      return
+    }
+
+    // 3. Generate a session tid locally — tracking starts without waiting for the server.
+    //    A locally-generated id is enough to associate events in this session.
+    var newTid = 'obs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10)
+    try {
+      sessionStorage.setItem(ssKey, newTid)
+      sessionStorage.setItem(tsKey, String(Date.now()))
+    } catch (e) {}
+
+    // 4. Start tracking IMMEDIATELY — events flow even if the session registration below fails
+    beginTracking(resolvedTestId, newTid, false)
+
+    // 5. Refresh the inactivity timer on any user interaction
+    document.addEventListener('click', function () {
+      try { sessionStorage.setItem(tsKey, String(Date.now())) } catch (e) {}
+    }, { passive: true })
+
+    // 6. Register session with the API async (fire-and-forget).
+    //    This creates the participant record that shows up in the dashboard sessions table.
+    //    If it fails, events are still tracked — the session just won't have metadata.
+    var ua = navigator.userAgent
+    fetch(API_URL + '/api/tests/' + resolvedTestId + '/auto-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tid: newTid,
+        tester_key: testerKey,
+        referrer: document.referrer || '',
+        browser: detectBrowser(ua),
+        device_type: /Mobi|Android/i.test(ua) ? 'mobile' : /Tablet|iPad/i.test(ua) ? 'tablet' : 'desktop'
+      })
+    }).catch(function () {})
+  }
+
+  // ─── CORE TRACKING ───────────────────────────────────────────────────────────
+  // beginTracking is a function declaration so it is hoisted above the async
+  // calls above — this is intentional.
+
+  function beginTracking(resolvedTestId, resolvedTid, propagateParams) {
+    try {
+      sessionStorage.setItem('__pp_tid', resolvedTid)
+      sessionStorage.setItem('__pp_test_id', resolvedTestId)
+    } catch (e) {}
+
+    // Hook called after every tracked event — assigned by the task overlay once ready
+    var _ppOnEvent = null
+
+    // ─── Screenshot capture helper ──────────────────────────────────────────────
+    var _screenshotReady = false
+    var _screenshotLoading = false
+
+    function ensureScreenshotLib(cb) {
+      if (_screenshotReady) { cb(); return }
+      if (_screenshotLoading) {
+        var iv = setInterval(function () {
+          if (_screenshotReady) { clearInterval(iv); cb() }
+        }, 100)
+        return
+      }
+      _screenshotLoading = true
+      var sc = document.createElement('script')
+      sc.src = API_URL + '/snippet/screenshot-bundle.js'
+      sc.onload = function () { _screenshotReady = true; cb() }
+      sc.onerror = function () { _screenshotReady = false; _screenshotLoading = false }
+      document.head.appendChild(sc)
+    }
+
+    // --- Core send function ---
+    // Sends the event immediately (without screenshot), then fires a follow-up
+    // request with the screenshot attached once html2canvas finishes.
+    function send(type, selector, url, metadata) {
+      var cleanedUrl = cleanUrl(url || location.href)
+      var ts = new Date().toISOString()
+      var payload = {
+        tid: resolvedTid,
+        test_id: resolvedTestId,
+        type: type,
+        selector: selector || null,
+        url: cleanedUrl,
+        metadata: metadata || null,
+        timestamp: ts
+      }
+
+      // Capture screenshot in parallel; send event data with it in a single request.
+      // If the lib isn't loaded yet, send without screenshot so events aren't delayed.
+      if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
+        window.__ppCaptureScreenshot().then(function (dataUrl) {
+          if (dataUrl) payload.screenshot = dataUrl
+          fetch(API_URL + '/api/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).catch(function () {})
+        }).catch(function () {
+          fetch(API_URL + '/api/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).catch(function () {})
+        })
+      } else {
+        fetch(API_URL + '/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true
+        }).catch(function () {})
+      }
+
+      // Notify overlay (non-blocking)
+      if (_ppOnEvent) _ppOnEvent(type, selector || null, cleanedUrl)
+    }
+
+    // --- Extract visible text from a clicked element ---
+    function getClickText(el) {
+      var node = el
+      for (var i = 0; i < 3; i++) {
+        if (!node) break
+        var text = (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim()
+        if (text) return text.slice(0, 80)
+        node = node.parentElement
+      }
+      return null
+    }
+
+    // --- Click tracking (capture phase) ---
+    document.addEventListener(
+      'click',
+      function (e) {
+        var text = getClickText(e.target)
+        send('click', buildSelector(e.target), location.href, text ? { text: text } : null)
+      },
+      true
+    )
+
+    // --- Input change tracking (selector only, never the value) ---
+    document.addEventListener(
+      'change',
+      function (e) {
+        send('input_change', buildSelector(e.target), location.href, { tagName: e.target.tagName })
+      },
+      true
+    )
+
+    // --- URL / navigation tracking ---
+    // Delay slightly so the new page content paints before the screenshot fires.
+    function trackUrl() {
+      setTimeout(function () {
+        send('url_change', null, location.href, null)
+      }, 150)
+    }
+
+    if (propagateParams) {
+      // Re-inject __tid/__test_id into SPA navigation URLs so they survive React Router
+      function injectParamsIntoUrl(url) {
+        if (!url) return url
+        try {
+          var u = new URL(url, location.href)
+          u.searchParams.set('__tid', resolvedTid)
+          u.searchParams.set('__test_id', resolvedTestId)
+          return u.toString()
+        } catch (e) { return url }
+      }
+
+      var origPush = history.pushState
+      history.pushState = function (state, title, url) {
+        origPush.call(history, state, title, injectParamsIntoUrl(url))
+        trackUrl()
+      }
+      var origReplace = history.replaceState
+      history.replaceState = function (state, title, url) {
+        origReplace.call(history, state, title, injectParamsIntoUrl(url))
+        trackUrl()
+      }
+
+      // --- Link propagation ---
+      function propagateLinks() {
+        var links = document.querySelectorAll('a[href]')
+        for (var i = 0; i < links.length; i++) {
+          try {
+            var href = new URL(links[i].href)
+            if (href.origin === location.origin) {
+              href.searchParams.set('__tid', resolvedTid)
+              href.searchParams.set('__test_id', resolvedTestId)
+              links[i].href = href.toString()
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', propagateLinks)
+      } else {
+        propagateLinks()
+      }
+
+      var observer = new MutationObserver(function (mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes.length) { propagateLinks(); break }
+        }
+      })
+      observer.observe(document.documentElement, { childList: true, subtree: true })
+    } else {
+      // Observational mode: track URL changes without injecting params
+      var origPushObs = history.pushState
+      history.pushState = function (state, title, url) {
+        origPushObs.call(history, state, title, url)
+        trackUrl()
+      }
+      var origReplaceObs = history.replaceState
+      history.replaceState = function (state, title, url) {
+        origReplaceObs.call(history, state, title, url)
+        trackUrl()
+      }
+    }
+
+    window.addEventListener('popstate', trackUrl)
+    window.addEventListener('hashchange', trackUrl)
+
+    // --- Public API ---
+    window.ProtoPulse = {
+      apiUrl: API_URL,
+      track: function (eventName, metadata) {
+        send(eventName, null, location.href, metadata || null)
+      }
+    }
+
+    // Track initial pageview
+    send('url_change', null, location.href, null)
+
+    // ─── SESSION REPLAY ────────────────────────────────────────────────────────
+    // Starts automatically — no consent banner needed for recruited usability tests.
+    // All inputs are masked (maskAllInputs: true). No audio/video is captured.
+
+    var s = document.createElement('script')
+    s.src = API_URL + '/snippet/replay-bundle.js'
+    s.onload = function () {
+      if (typeof window.__ppStartReplay === 'function') {
+        window.__ppStartReplay({ apiUrl: API_URL, tid: resolvedTid, testId: resolvedTestId })
+      }
+    }
+    document.head.appendChild(s)
+
+    // ─── SCREENSHOT CAPTURE ──────────────────────────────────────────────────
+    // Pre-load html2canvas so it's ready before the first click event fires.
+    ensureScreenshotLib(function () {})
+
+    // ─── PARTICIPANT TASK OVERLAY ──────────────────────────────────────────────
+    // For scenario tests only. Shows the current task in a floating card and plays
+    // a success animation when the participant completes each step goal.
+    // Observational tests skip this entirely (handled by the test_type check below).
+
+    ;(function () {
+      var steps = []
+      var currentIdx = 0
+      var completing = false // guard double-fire
+      var overlayEl = null
+
+      // Mirror of server matchesGoal — kept in sync manually.
+      // AND logic: when both selector and url_pattern are set, both must match.
+      function clientMatchesGoal(type, sel, url, def) {
+        if (!def || !def.type) return false
+        if (type !== def.type) return false
+        var hasSel = def.selector && def.selector !== ''
+        var hasUrl = def.url_pattern && def.url_pattern !== ''
+        if (!hasSel && !hasUrl) return true
+        if (hasSel && hasUrl) {
+          return sel === def.selector && !!url && url.indexOf(def.url_pattern) !== -1
+        }
+        if (hasSel) return sel === def.selector
+        return !!url && url.indexOf(def.url_pattern) !== -1
+      }
+
+      // Inject CSS once
+      function injectStyles() {
+        if (document.getElementById('__pp-ov-css')) return
+        var st = document.createElement('style')
+        st.id = '__pp-ov-css'
+        st.textContent = [
+          '#__pp-ov{',
+            'position:fixed;bottom:16px;right:16px;width:272px;z-index:2147483640;',
+            'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
+            'border-radius:14px;overflow:hidden;',
+            'box-shadow:0 12px 40px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.2);',
+            'transition:opacity .35s,transform .35s cubic-bezier(.22,1,.36,1);',
+          '}',
+          '#__pp-ov.__pp-hidden{opacity:0;transform:translateY(12px);pointer-events:none}',
+          '.__pp-task{padding:14px 16px 16px;background:#18181b;color:#fff;animation:__ppSlideIn .4s cubic-bezier(.22,1,.36,1)}',
+          '.__pp-step-lbl{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#52525b;margin-bottom:5px}',
+          '.__pp-task-title{font-size:13px;font-weight:700;color:#fff;margin-bottom:7px;line-height:1.35}',
+          '.__pp-divider{height:1px;background:rgba(255,255,255,.08);margin-bottom:9px}',
+          '.__pp-task-body{font-size:12.5px;line-height:1.55;color:#a1a1aa}',
+          '.__pp-no-task{padding:12px 16px;background:#18181b;color:#52525b;font-size:12px;text-align:center}',
+          /* success panel */
+          '.__pp-success{padding:22px 16px 20px;background:#15803d;color:#fff;',
+            'display:flex;flex-direction:column;align-items:center;text-align:center;',
+            'position:relative;overflow:hidden;animation:__ppSlideIn .3s cubic-bezier(.22,1,.36,1)',
+          '}',
+          '.__pp-check-wrap{width:52px;height:52px;margin-bottom:11px;',
+            'animation:__ppCheckPop .45s cubic-bezier(.34,1.56,.64,1) .05s both',
+          '}',
+          '.__pp-check-svg path{stroke-dasharray:29;stroke-dashoffset:29;animation:__ppDrawCheck .4s cubic-bezier(.22,1,.36,1) .2s forwards}',
+          '.__pp-ok-title{font-size:15px;font-weight:700;margin-bottom:3px}',
+          '.__pp-ok-sub{font-size:11.5px;color:rgba(255,255,255,.7)}',
+          /* particles */
+          '.__pp-pt{position:absolute;width:7px;height:7px;border-radius:50%;',
+            'top:50%;left:50%;',
+            'animation:__ppFly .65s ease-out both',
+          '}',
+          /* all-done panel */
+          '.__pp-done{padding:18px 16px;background:#18181b;color:#fff;',
+            'display:flex;flex-direction:column;align-items:center;text-align:center;',
+            'animation:__ppSlideIn .4s cubic-bezier(.22,1,.36,1)',
+          '}',
+          '.__pp-done-emoji{font-size:28px;margin-bottom:8px}',
+          '.__pp-done-title{font-size:14px;font-weight:700;margin-bottom:4px}',
+          '.__pp-done-sub{font-size:12px;color:#71717a}',
+          /* keyframes */
+          '@keyframes __ppSlideIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}',
+          '@keyframes __ppCheckPop{from{transform:scale(0) rotate(-20deg)}to{transform:scale(1) rotate(0)}}',
+          '@keyframes __ppDrawCheck{to{stroke-dashoffset:0}}',
+          '@keyframes __ppFly{0%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(0);opacity:0}}',
+          '@keyframes __ppFadeOut{to{opacity:0;transform:translateY(-8px)}}'
+        ].join('')
+        document.head.appendChild(st)
+      }
+
+      // Build a success panel with checkmark + particles
+      function buildSuccessPanel(isLast) {
+        var div = document.createElement('div')
+        div.className = '__pp-success'
+
+        // Particles — 8 dots fanned around the center
+        var ptColors = ['#4ade80','#86efac','#fde68a','#fbbf24','#a5f3fc','#67e8f9','#c4b5fd','#f9a8d4']
+        var angles = [0,45,90,135,180,225,270,315]
+        for (var i = 0; i < 8; i++) {
+          var pt = document.createElement('div')
+          pt.className = '__pp-pt'
+          var rad = angles[i] * Math.PI / 180
+          pt.style.cssText = [
+            '--dx:' + Math.round(Math.cos(rad) * 44) + 'px',
+            '--dy:' + Math.round(Math.sin(rad) * 44) + 'px',
+            'background:' + ptColors[i],
+            'animation-delay:' + (i * 0.03) + 's'
+          ].join(';')
+          div.appendChild(pt)
+        }
+
+        // Checkmark SVG
+        var wrap = document.createElement('div')
+        wrap.className = '__pp-check-wrap'
+        wrap.innerHTML = '<svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" class="__pp-check-svg">' +
+          '<circle cx="14" cy="14" r="13" fill="rgba(255,255,255,.15)"/>' +
+          '<path d="M8 14.5 L12.5 19 L20.5 10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>'
+        div.appendChild(wrap)
+
+        var title = document.createElement('div')
+        title.className = '__pp-ok-title'
+        title.textContent = isLast ? 'All done!' : 'Nice work!'
+        div.appendChild(title)
+
+        var sub = document.createElement('div')
+        sub.className = '__pp-ok-sub'
+        sub.textContent = isLast ? 'You\'ve completed all tasks.' : 'Moving to the next task\u2026'
+        div.appendChild(sub)
+
+        return div
+      }
+
+      // Build a task panel for the given step
+      function buildTaskPanel(step, total) {
+        var div = document.createElement('div')
+        div.className = '__pp-task'
+
+        if (!step.task && !step.title) {
+          var empty = document.createElement('div')
+          empty.className = '__pp-no-task'
+          empty.textContent = 'Complete the task to continue.'
+          div.appendChild(empty)
+          return div
+        }
+
+        var lbl = document.createElement('div')
+        lbl.className = '__pp-step-lbl'
+        lbl.textContent = 'Task ' + step.order_index + ' of ' + total
+        div.appendChild(lbl)
+
+        if (step.title) {
+          var ttl = document.createElement('div')
+          ttl.className = '__pp-task-title'
+          ttl.textContent = step.title
+          div.appendChild(ttl)
+        }
+
+        if (step.task) {
+          if (step.title) {
+            var hr = document.createElement('div')
+            hr.className = '__pp-divider'
+            div.appendChild(hr)
+          }
+          var body = document.createElement('div')
+          body.className = '__pp-task-body'
+          body.textContent = step.task
+          div.appendChild(body)
+        }
+
+        return div
+      }
+
+      // Build the "all tasks complete" panel
+      function buildDonePanel() {
+        var div = document.createElement('div')
+        div.className = '__pp-done'
+        var emoji = document.createElement('div')
+        emoji.className = '__pp-done-emoji'
+        emoji.textContent = '\uD83C\uDF89'
+        div.appendChild(emoji)
+        var ttl = document.createElement('div')
+        ttl.className = '__pp-done-title'
+        ttl.textContent = 'All tasks complete'
+        div.appendChild(ttl)
+        var sub = document.createElement('div')
+        sub.className = '__pp-done-sub'
+        sub.textContent = 'Thanks for participating!'
+        div.appendChild(sub)
+        return div
+      }
+
+      function showStep(idx) {
+        if (!overlayEl) return
+        overlayEl.innerHTML = ''
+        overlayEl.classList.remove('__pp-hidden')
+        overlayEl.appendChild(buildTaskPanel(steps[idx], steps.length))
+      }
+
+      function triggerSuccess(idx) {
+        if (!overlayEl) return
+        var isLast = idx >= steps.length - 1
+        overlayEl.innerHTML = ''
+        overlayEl.appendChild(buildSuccessPanel(isLast))
+
+        setTimeout(function () {
+          if (!overlayEl) return
+          if (isLast) {
+            // Stop replay recording — all tasks complete
+            if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
+            // Show done panel, then fade out
+            overlayEl.innerHTML = ''
+            overlayEl.appendChild(buildDonePanel())
+            setTimeout(function () {
+              if (overlayEl) {
+                overlayEl.style.animation = '__ppFadeOut .5s ease forwards'
+                setTimeout(function () {
+                  if (overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl)
+                }, 500)
+              }
+            }, 3500)
+          } else {
+            // Advance to next task
+            currentIdx = idx + 1
+            completing = false
+            showStep(currentIdx)
+          }
+        }, 2000)
+      }
+
+      // Fetch scenario tasks and boot the overlay
+      fetch(API_URL + '/api/tests/' + resolvedTestId + '/tasks')
+        .then(function (r) { return r.json() })
+        .then(function (data) {
+          // ── Single-goal: stop replay the moment the goal fires ────────────────
+          if (data.test_type === 'single' && data.goal_event && data.goal_event.type) {
+            _ppOnEvent = function (type, sel, url) {
+              if (clientMatchesGoal(type, sel, url, data.goal_event)) {
+                _ppOnEvent = null // unhook so it only fires once
+                if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
+              }
+            }
+            return
+          }
+
+          // Observational and unrecognised types: no overlay needed
+          if (data.test_type !== 'scenario') return
+
+          steps = (data.steps || []).filter(function (s) { return s.task || s.title })
+          if (!steps.length) return
+
+          injectStyles()
+          overlayEl = document.createElement('div')
+          overlayEl.id = '__pp-ov'
+          overlayEl.className = '__pp-hidden'
+
+          function mount() { document.body.appendChild(overlayEl); showStep(0) }
+          if (document.body) mount()
+          else document.addEventListener('DOMContentLoaded', mount)
+
+          // Wire up the event hook so every tracked event is checked against the current step
+          _ppOnEvent = function (type, sel, url) {
+            if (completing || currentIdx >= steps.length) return
+            var step = steps[currentIdx]
+            if (clientMatchesGoal(type, sel, url, step.goal_event)) {
+              completing = true
+              triggerSuccess(currentIdx)
+            }
+          }
+        })
+        .catch(function () {})
+    })()
+  }
 
 })()
