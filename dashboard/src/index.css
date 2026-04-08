@@ -641,6 +641,23 @@ pre {
   color: var(--color-danger);
 }
 
+.pp-observational-results .pp-stat-value {
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-stat-grid--obs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  .pp-stat-grid--obs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .pp-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;

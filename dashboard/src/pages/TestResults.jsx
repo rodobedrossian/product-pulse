@@ -241,7 +241,7 @@ function ObservationalResults({ data, testId, navigate }) {
   })
 
   return (
-    <>
+    <div className="pp-observational-results">
       {lightbox && <ScreenshotLightbox src={lightbox} onClose={() => setLightbox(null)} />}
       <div className="pp-results-tabs">
         <button type="button" className={tab === 'overview' ? 'is-active' : ''} onClick={() => setTab('overview')}>Overview</button>
@@ -251,14 +251,14 @@ function ObservationalResults({ data, testId, navigate }) {
 
       {tab === 'overview' && (
         <>
-          <div className="pp-stat-grid">
+          <div className="pp-stat-grid pp-stat-grid--obs">
             <StatCard label="Sessions" value={totalSessions} />
             <StatCard label="Unique visitors" value={uniqueVisitors} />
             <StatCard label="Returning visitors" value={returningVisitors} />
             <StatCard label="Replay coverage" value={`${replayCoverage}%`} highlight={replayCoverage >= 60 ? 'green' : replayCoverage >= 30 ? 'yellow' : 'red'} />
           </div>
 
-          <div className="pp-stat-grid" style={{ marginTop: '-0.5rem' }}>
+          <div className="pp-stat-grid pp-stat-grid--obs" style={{ marginTop: '-0.5rem' }}>
             <StatCard label="Median session duration" value={formatMs(medianDurationMs)} />
             <StatCard label="Avg events / session" value={avgEventsPerSession} />
             <StatCard label="Total events" value={allEvents.length} />
@@ -506,7 +506,7 @@ function ObservationalResults({ data, testId, navigate }) {
           )}
         </>
       )}
-    </>
+    </div>
   )
 }
 
