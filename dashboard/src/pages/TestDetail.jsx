@@ -1188,15 +1188,16 @@ export default function TestDetail() {
                                   Testing link
                                 </a>
                                 <CopyButton text={participantLink} label="Copy link" />
+                                <ParticipantAudioRecorder
+                                  testId={id}
+                                  participant={p}
+                                  recordings={recordingsByParticipant[p.id] || []}
+                                  inline
+                                />
                               </div>
                             )
                           })()}
                         </div>
-                        <ParticipantAudioRecorder
-                          testId={id}
-                          participant={p}
-                          recordings={recordingsByParticipant[p.id] || []}
-                        />
                       </div>
                     ))}
                   </div>

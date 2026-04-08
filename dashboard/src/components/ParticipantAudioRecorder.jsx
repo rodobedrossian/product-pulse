@@ -48,7 +48,7 @@ function PlayIcon() {
   )
 }
 
-export default function ParticipantAudioRecorder({ testId, participant, recordings }) {
+export default function ParticipantAudioRecorder({ testId, participant, recordings, inline = false }) {
   const [error, setError] = useState(null)
   const [desktopBusy, setDesktopBusy] = useState(false)
   const [desktopErr, setDesktopErr] = useState(null)
@@ -112,7 +112,7 @@ export default function ParticipantAudioRecorder({ testId, participant, recordin
   )
 
   return (
-    <div className="pp-participant-recorder">
+    <div className={`pp-participant-recorder${inline ? ' pp-participant-recorder--inline' : ''}`}>
       <div className="pp-participant-recorder-actions">
         <button
           type="button"
