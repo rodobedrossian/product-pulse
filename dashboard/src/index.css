@@ -1239,23 +1239,139 @@ details.pp-details[open] summary::before {
   margin-left: auto;   /* push to the far right of the controls bar */
 }
 
-/* ─── Test type selector (CreateTest) ──────────────────────────────────────── */
-.pp-type-grid {
+/* ─── Create test page ─────────────────────────────────────────────────────── */
+.pp-create-shell {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.pp-create-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.pp-create-step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-muted);
+}
+
+.pp-create-step-pill.is-current {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: rgba(201, 74, 60, 0.06);
+}
+
+.pp-create-step-pill.is-next {
+  opacity: 0.85;
+}
+
+.pp-create-card {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-create-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0;
+}
+
+@media (min-width: 880px) {
+  .pp-create-grid {
+    grid-template-columns: minmax(260px, 1fr) minmax(0, 1.2fr);
+    align-items: stretch;
+  }
+
+  .pp-create-col-type {
+    border-right: 1px solid var(--color-border);
+    padding: 1.35rem 1.25rem;
+    background: var(--color-surface-raised);
+  }
+
+  .pp-create-col-form {
+    padding: 1.35rem 1.35rem 0;
+  }
+}
+
+@media (max-width: 879px) {
+  .pp-create-col-type {
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface-raised);
+  }
+
+  .pp-create-col-form {
+    padding: 1.25rem 1.25rem 0;
+  }
+}
+
+.pp-create-col-type .pp-kicker {
+  margin-bottom: 0.65rem;
+}
+
+.pp-create-next-panel {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--color-border-strong);
+}
+
+.pp-create-next-panel strong {
+  display: block;
+  font-size: 0.8125rem;
+  font-family: var(--font-display);
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.pp-create-next-panel ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.pp-create-next-panel li {
+  margin-bottom: 0.35rem;
+}
+
+.pp-create-next-panel a {
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+/* Test type selector (CreateTest) */
+.pp-type-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
 
 .pp-type-card {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.875rem 1rem;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
   border: 1.5px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   cursor: pointer;
   transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+  text-align: left;
 }
 
 .pp-type-card:hover {
@@ -1268,9 +1384,128 @@ details.pp-details[open] summary::before {
   background: var(--color-surface-raised);
 }
 
+.pp-type-card-icon {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.pp-type-card.is-active .pp-type-card-icon {
+  background: rgba(201, 74, 60, 0.1);
+  border-color: rgba(201, 74, 60, 0.25);
+  color: var(--color-accent);
+}
+
+.pp-type-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pp-type-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
 .pp-type-card strong {
   font-size: 0.9375rem;
   font-family: var(--font-display);
+}
+
+.pp-type-card-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: var(--color-accent);
+  color: #fff;
+  line-height: 1.2;
+}
+
+.pp-type-card-setup {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.pp-type-card-desc {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  line-height: 1.45;
+}
+
+.pp-field-hint {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  display: block;
+  margin-top: 0.3rem;
+  line-height: 1.4;
+}
+
+.pp-field-error {
+  font-size: 0.75rem;
+  color: var(--color-danger);
+  display: block;
+  margin-top: 0.3rem;
+}
+
+.pp-obs-callout {
+  margin: 0 0 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-info-border);
+  background: var(--color-info-bg);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.pp-obs-callout strong {
+  color: var(--color-text);
+  display: block;
+  margin-bottom: 0.25rem;
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+}
+
+.pp-form-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.35rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.pp-form-footer-hint {
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  max-width: 22rem;
+  line-height: 1.4;
+}
+
+.pp-form-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 /* ─── Step cards (TestDetail, scenario) ─────────────────────────────────────── */
