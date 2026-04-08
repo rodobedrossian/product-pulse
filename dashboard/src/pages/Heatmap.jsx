@@ -10,6 +10,7 @@ const HEATMAP_PREFS_KEY = (testId) => `pp_heatmap_prefs_${testId}`
 const DEFAULT_SPREAD = 100
 const DEFAULT_INTENSITY = 50
 const DEFAULT_OVERLAY = 55
+const DEFAULT_SMOOTH = 60
 
 function loadHeatmapPrefs(testId) {
   try {
@@ -17,10 +18,13 @@ function loadHeatmapPrefs(testId) {
     if (!raw) return null
     const o = JSON.parse(raw)
     if (typeof o.spread !== 'number' || typeof o.intensity !== 'number' || typeof o.overlay !== 'number') return null
+    const smooth =
+      typeof o.smooth === 'number' ? Math.min(100, Math.max(0, o.smooth)) : DEFAULT_SMOOTH
     return {
       spread: Math.min(150, Math.max(50, o.spread)),
       intensity: Math.min(100, Math.max(0, o.intensity)),
-      overlay: Math.min(90, Math.max(35, o.overlay))
+      overlay: Math.min(90, Math.max(35, o.overlay)),
+      smooth
     }
   } catch {
     return null
@@ -36,7 +40,27 @@ function saveHeatmapPrefs(testId, prefs) {
 }
 
 /**
- * Accumulate radial blobs into offscreen canvas, then colourise with percentile-based LUT.
+ * Copy accumulated heat to a new canvas with Gaussian-like blur (CSS filter) for smooth “liquid” regions.
+ */
+function blurIntensityCanvas(source, W, H, blurPx) {
+  const out = document.createElement('canvas')
+  out.width = W
+  out.height = H
+  const bc = out.getContext('2d')
+  bc.fillStyle = '#000'
+  bc.fillRect(0, 0, W, H)
+  if (blurPx >= 0.5) {
+    bc.filter = `blur(${blurPx}px)`
+    bc.drawImage(source, 0, 0)
+    bc.filter = 'none'
+  } else {
+    bc.drawImage(source, 0, 0)
+  }
+  return out
+}
+
+/**
+ * Accumulate radial blobs into offscreen canvas, optional blur, then colourise with percentile-based LUT.
  */
 function renderHeatmap(canvas, options) {
   const {
@@ -45,7 +69,8 @@ function renderHeatmap(canvas, options) {
     moves = [],
     spreadMul = 1,
     intensity = 50,
-    gamma = 0.82
+    gamma = 0.82,
+    smooth = DEFAULT_SMOOTH
   } = options
 
   if (!canvas) return
@@ -88,7 +113,12 @@ function renderHeatmap(canvas, options) {
     drawLayer(clicks, rClicks, 0.032, 0.012)
   }
 
-  const imgData = oc.getImageData(0, 0, W, H)
+  const maxBlur = Math.min(20, Math.max(8, minDim * 0.032))
+  const blurPx = (smooth / 100) * maxBlur
+  const imgData =
+    smooth <= 0 || blurPx < 0.35
+      ? oc.getImageData(0, 0, W, H)
+      : blurIntensityCanvas(off, W, H, blurPx).getContext('2d').getImageData(0, 0, W, H)
   const data = imgData.data
 
   for (let i = 0; i < data.length; i += 4) {
@@ -197,6 +227,7 @@ export default function Heatmap() {
   const [spread, setSpread] = useState(DEFAULT_SPREAD)
   const [intensity, setIntensity] = useState(DEFAULT_INTENSITY)
   const [overlay, setOverlay] = useState(DEFAULT_OVERLAY)
+  const [smooth, setSmooth] = useState(DEFAULT_SMOOTH)
 
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
@@ -207,12 +238,13 @@ export default function Heatmap() {
       setSpread(p.spread)
       setIntensity(p.intensity)
       setOverlay(p.overlay)
+      setSmooth(p.smooth ?? DEFAULT_SMOOTH)
     }
   }, [id])
 
   useEffect(() => {
-    saveHeatmapPrefs(id, { spread, intensity, overlay })
-  }, [id, spread, intensity, overlay])
+    saveHeatmapPrefs(id, { spread, intensity, overlay, smooth })
+  }, [id, spread, intensity, overlay, smooth])
 
   useEffect(() => {
     apiFetch(`/api/tests/${id}/heatmap`)
@@ -266,9 +298,10 @@ export default function Heatmap() {
       moves,
       spreadMul: spread / 100,
       intensity,
-      gamma: 0.82
+      gamma: 0.82,
+      smooth
     })
-  }, [selected, mode, spread, intensity])
+  }, [selected, mode, spread, intensity, smooth])
 
   useEffect(() => {
     redraw()
@@ -373,6 +406,16 @@ export default function Heatmap() {
               />
             </label>
             <label className="pp-heatmap-tuner">
+              <span>Smooth</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={smooth}
+                onChange={(e) => setSmooth(Number(e.target.value))}
+              />
+            </label>
+            <label className="pp-heatmap-tuner">
               <span>Overlay</span>
               <input
                 type="range"
@@ -422,8 +465,8 @@ export default function Heatmap() {
                 <span className="pp-muted" style={{ fontSize: '0.75rem' }}>High</span>
               </div>
               <p className="pp-heatmap-legend-note">
-                Relative activity on this page. The red end of the scale highlights roughly the hottest{' '}
-                {hotFractionPct}% of the map (adjust with Contrast).
+                Relative activity on this page. The red end highlights roughly the hottest {hotFractionPct}% (Contrast).
+                Smooth blends nearby activity for a softer overlay; set to 0 for crisp blobs.
               </p>
             </div>
           </>
