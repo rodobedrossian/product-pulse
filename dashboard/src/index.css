@@ -5205,3 +5205,226 @@ select.pp-input {
   gap: 0.4rem;
   flex-wrap: wrap;
 }
+
+/* ── Transcript Insights ────────────────────────────────────────────────── */
+
+/* Segment backgrounds — left border + tinted background per insight type */
+.pp-insight-segment { position: relative; }
+
+.pp-insight-segment--confusion   { background: var(--color-warn-bg);       border-left: 2px solid var(--color-warn-border) !important; }
+.pp-insight-segment--frustration { background: var(--color-danger-bg);      border-left: 2px solid var(--color-danger-border) !important; }
+.pp-insight-segment--delight     { background: var(--color-success-bg);     border-left: 2px solid var(--color-success-border) !important; }
+.pp-insight-segment--hesitation  { background: var(--color-info-bg);        border-left: 2px solid var(--color-info-border) !important; }
+.pp-insight-segment--discovery   { background: #f0fdfa;                     border-left: 2px solid #99f6e4 !important; }
+.pp-insight-segment--comparison  { background: var(--color-surface-raised); border-left: 2px solid var(--color-border-strong) !important; }
+
+/* Emoji tag — right-aligned badge on highlighted segments */
+.pp-insight-tag {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  opacity: 0.8;
+  padding-top: 0.2rem;
+  line-height: 1;
+}
+
+/* Inline insight card — appears immediately below its segment */
+.pp-insight-card {
+  margin: 0 0.6rem 0.4rem 3.75rem; /* indent to align with text, not timestamp */
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.pp-insight-card--confusion   { background: var(--color-warn-bg);       border-color: var(--color-warn-border); }
+.pp-insight-card--frustration { background: var(--color-danger-bg);      border-color: var(--color-danger-border); }
+.pp-insight-card--delight     { background: var(--color-success-bg);     border-color: var(--color-success-border); }
+.pp-insight-card--hesitation  { background: var(--color-info-bg);        border-color: var(--color-info-border); }
+.pp-insight-card--discovery   { background: #f0fdfa;                     border-color: #99f6e4; }
+.pp-insight-card--comparison  { background: var(--color-surface-raised); border-color: var(--color-border-strong); }
+
+.pp-insight-card-type {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.15rem;
+  color: var(--color-text-secondary);
+}
+.pp-insight-card-label {
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+  color: var(--color-text);
+  font-size: 0.8125rem;
+}
+.pp-insight-card-quote {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  font-size: 0.8rem;
+}
+
+/* Summary filter bar — sits between status badge and audio player */
+.pp-insight-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+/* Chip buttons */
+.pp-insight-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: none;
+  transition: box-shadow 0.12s, opacity 0.12s;
+}
+.pp-insight-chip:hover { opacity: 0.85; }
+.pp-insight-chip.is-active { box-shadow: 0 0 0 2px currentColor; }
+
+.pp-insight-chip--confusion   { background: var(--color-warn-bg);       border-color: var(--color-warn-border);   color: var(--color-warn); }
+.pp-insight-chip--frustration { background: var(--color-danger-bg);      border-color: var(--color-danger-border); color: var(--color-danger); }
+.pp-insight-chip--delight     { background: var(--color-success-bg);     border-color: var(--color-success-border); color: var(--color-success); }
+.pp-insight-chip--hesitation  { background: var(--color-info-bg);        border-color: var(--color-info-border);   color: #3b82f6; }
+.pp-insight-chip--discovery   { background: #f0fdfa;                     border-color: #99f6e4;                    color: #0f766e; }
+.pp-insight-chip--comparison  { background: var(--color-surface-raised); border-color: var(--color-border-strong); color: var(--color-muted); }
+
+.pp-insight-chip-clear {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.pp-insight-chip-clear:hover { background: var(--color-surface); }
+
+/* Analyzing / loading state */
+.pp-insight-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+
+/* Analyze CTA */
+.pp-insight-cta {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+/* ── Insights Tab (TestResults) ─────────────────────────────────────────── */
+
+.pp-insights-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.pp-insights-stat-card {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.pp-insights-stat-card--confusion   { background: var(--color-warn-bg);       border-color: var(--color-warn-border); }
+.pp-insights-stat-card--frustration { background: var(--color-danger-bg);      border-color: var(--color-danger-border); }
+.pp-insights-stat-card--delight     { background: var(--color-success-bg);     border-color: var(--color-success-border); }
+.pp-insights-stat-card--hesitation  { background: var(--color-info-bg);        border-color: var(--color-info-border); }
+.pp-insights-stat-card--discovery   { background: #f0fdfa;                     border-color: #99f6e4; }
+.pp-insights-stat-card--comparison  { background: var(--color-surface-raised); border-color: var(--color-border-strong); }
+
+.pp-insights-stat-count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text);
+}
+.pp-insights-stat-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+}
+
+.pp-insights-section {
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.pp-insights-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1rem;
+  background: var(--color-surface);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  gap: 0.5rem;
+}
+.pp-insights-section-header:hover { background: var(--color-hover, rgba(0,0,0,0.03)); }
+
+.pp-insights-section-body {
+  border-top: 1px solid var(--color-border);
+}
+
+.pp-insights-quote-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.8375rem;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.1s;
+}
+.pp-insights-quote-card:last-child { border-bottom: none; }
+.pp-insights-quote-card:hover { background: var(--color-hover, rgba(0,0,0,0.025)); }
+
+.pp-insights-quote-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  margin-bottom: 0.1rem;
+}
+.pp-insights-quote-label {
+  font-weight: 600;
+  color: var(--color-text);
+  grid-column: 1 / -1;
+}
+.pp-insights-quote-text {
+  grid-column: 1 / -1;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.pp-insights-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}

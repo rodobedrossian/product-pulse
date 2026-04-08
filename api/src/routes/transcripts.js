@@ -32,7 +32,7 @@ router.get('/:testId/recordings/:recordingId/transcript', requireAuth, async (re
 
   const { data: transcript } = await adminDb
     .from('transcripts')
-    .select('id, status, transcript_text, segments, error_message, model_used, created_at, updated_at')
+    .select('id, status, transcript_text, segments, insights, insights_status, insights_error, error_message, model_used, created_at, updated_at')
     .eq('recording_id', recordingId)
     .eq('test_id', testId)
     .maybeSingle()
@@ -74,6 +74,48 @@ router.post('/:testId/recordings/:recordingId/transcript/retry', requireAuth, as
   }).catch((err) => console.error('[transcription] retry error:', err))
 
   res.json({ status: 'processing', message: 'Transcription started' })
+})
+
+// POST /api/tests/:testId/recordings/:recordingId/transcript/insights/analyze
+// Trigger on-demand insight analysis for a completed transcript
+router.post('/:testId/recordings/:recordingId/transcript/insights/analyze', requireAuth, async (req, res) => {
+  const { testId, recordingId } = req.params
+
+  const test = await loadTestForTeam(testId, req.teamId)
+  if (!test) return res.status(404).json({ error: 'Test not found' })
+
+  const { data: rec } = await adminDb
+    .from('participant_recordings')
+    .select('id, test_id')
+    .eq('id', recordingId)
+    .eq('test_id', testId)
+    .single()
+
+  if (!rec) return res.status(404).json({ error: 'Recording not found' })
+
+  const { data: transcript } = await adminDb
+    .from('transcripts')
+    .select('id, status, transcript_text, segments, insights_status')
+    .eq('recording_id', recordingId)
+    .eq('test_id', testId)
+    .maybeSingle()
+
+  if (!transcript) return res.status(404).json({ error: 'No transcript found — transcribe first' })
+  if (transcript.status !== 'done') {
+    return res.status(422).json({ error: 'Transcript must be complete before insight analysis' })
+  }
+  if (transcript.insights_status === 'processing') {
+    return res.status(409).json({ error: 'Insight analysis already in progress' })
+  }
+
+  const { analyzeTranscript } = await import('../services/insights.js')
+  analyzeTranscript({
+    transcriptId:   transcript.id,
+    transcriptText: transcript.transcript_text,
+    segments:       transcript.segments,
+  }).catch((err) => console.error('[insights] on-demand error:', err))
+
+  res.json({ insights_status: 'processing', message: 'Insight analysis started' })
 })
 
 export default router

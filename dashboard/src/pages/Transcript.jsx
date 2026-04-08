@@ -1,10 +1,22 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
 import { supabase } from '../lib/supabase.js'
 
 const API_BASE = getApiBase()
+
+// ─── Insight metadata ─────────────────────────────────────────────────────────
+
+const INSIGHT_META = [
+  { type: 'confusion',   emoji: '🟡', label: 'confused'   },
+  { type: 'frustration', emoji: '🔴', label: 'frustrated'  },
+  { type: 'delight',     emoji: '🟢', label: 'delighted'   },
+  { type: 'hesitation',  emoji: '🔵', label: 'hesitant'    },
+  { type: 'discovery',   emoji: '✨', label: 'discovery'   },
+  { type: 'comparison',  emoji: '⚪', label: 'comparison'  },
+]
+const INSIGHT_EMOJI = Object.fromEntries(INSIGHT_META.map((m) => [m.type, m.emoji]))
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +86,8 @@ export default function Transcript() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [retrying, setRetrying] = useState(false)
+  const [insightFilter, setInsightFilter] = useState(null)  // null = show all
+  const [analyzingInsights, setAnalyzingInsights] = useState(false)
 
   const pollRef = useRef(null)
   const audioRef = useRef(null)
@@ -192,6 +206,44 @@ export default function Transcript() {
     }
   }
 
+  // ── Trigger on-demand insight analysis ──────────────────────────────────
+  async function triggerInsightAnalysis() {
+    if (!activeRecordingId) return
+    setAnalyzingInsights(true)
+    try {
+      await apiFetch(
+        `/api/tests/${testId}/recordings/${activeRecordingId}/transcript/insights/analyze`,
+        { method: 'POST' }
+      )
+      setTranscript((prev) => prev ? { ...prev, insights_status: 'processing' } : prev)
+      // Restart polling so we pick up insights_status transitions
+      clearInterval(pollRef.current)
+      pollRef.current = setInterval(fetchTranscript, 3000)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAnalyzingInsights(false)
+    }
+  }
+
+  // ── Map insights to segments by time overlap ─────────────────────────────
+  const insightsBySegment = useMemo(() => {
+    const segs = transcript?.segments
+    const insights = transcript?.insights
+    if (!Array.isArray(segs) || !Array.isArray(insights) || !insights.length) return {}
+    const map = {}
+    insights.forEach((insight) => {
+      segs.forEach((seg, i) => {
+        const segEnd = segs[i + 1]?.start ?? Infinity
+        if (insight.start < segEnd && insight.end > seg.start) {
+          if (!map[i]) map[i] = []
+          map[i].push(insight)
+        }
+      })
+    })
+    return map
+  }, [transcript?.insights, transcript?.segments])
+
   // ── Sync audio playhead with transcript highlight ────────────────────────
   function handleTimeUpdate() {
     if (audioRef.current) setCurrentTime(audioRef.current.currentTime)
@@ -254,6 +306,69 @@ export default function Transcript() {
           )}
         </div>
 
+        {/* ── Insight Summary Bar ── */}
+        {transcript?.status === 'done' && (() => {
+          const { insights, insights_status } = transcript
+          const hasInsights = Array.isArray(insights) && insights.length > 0
+
+          if (insights_status === 'processing') {
+            return (
+              <div className="pp-insight-loading">
+                <span className="pp-transcript-spinner" aria-hidden /> Analyzing for insights…
+              </div>
+            )
+          }
+
+          if (hasInsights) {
+            return (
+              <div className="pp-insight-summary-bar">
+                {INSIGHT_META.map(({ type, emoji, label }) => {
+                  const count = insights.filter((i) => i.type === type).length
+                  if (!count) return null
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      className={`pp-insight-chip pp-insight-chip--${type}${insightFilter === type ? ' is-active' : ''}`}
+                      onClick={() => setInsightFilter(insightFilter === type ? null : type)}
+                    >
+                      {emoji} {count} {label}
+                    </button>
+                  )
+                })}
+                {insightFilter && (
+                  <button type="button" className="pp-insight-chip-clear" onClick={() => setInsightFilter(null)}>
+                    Clear filter
+                  </button>
+                )}
+              </div>
+            )
+          }
+
+          // No insights yet — show analyze CTA
+          if (!insights_status || insights_status === 'none' || insights_status === 'error') {
+            return (
+              <div className="pp-insight-cta">
+                <button
+                  type="button"
+                  className="pp-btn-sm"
+                  onClick={triggerInsightAnalysis}
+                  disabled={analyzingInsights}
+                >
+                  {analyzingInsights ? 'Starting…' : '✦ Analyze insights'}
+                </button>
+                {insights_status === 'error' && transcript.insights_error && (
+                  <span className="pp-muted" style={{ fontSize: '0.8rem' }}>
+                    Previous analysis failed: {transcript.insights_error}
+                  </span>
+                )}
+              </div>
+            )
+          }
+
+          return null
+        })()}
+
         {/* ── Audio player ── */}
         {audioUrl ? (
           <div className="pp-transcript-player">
@@ -287,18 +402,50 @@ export default function Transcript() {
                     audioRef.current &&
                     currentTime >= seg.start &&
                     currentTime < (transcript.segments[i + 1]?.start ?? Infinity)
+
+                  // Insight matching — get insights for this segment, respecting active filter
+                  const segInsights = insightsBySegment[i] || []
+                  const visibleInsights = insightFilter
+                    ? segInsights.filter((ins) => ins.type === insightFilter)
+                    : segInsights
+                  const primaryInsight = visibleInsights[0] ?? null
+
                   return (
-                    <div
-                      key={i}
-                      className={`pp-transcript-segment${isActive ? ' pp-transcript-segment--active' : ''}`}
-                      onClick={() => seekTo(seg.start)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === 'Enter' && seekTo(seg.start)}
-                      title="Click to jump to this moment"
-                    >
-                      <span className="pp-transcript-time">[{formatTime(seg.start)}]</span>
-                      <span className="pp-transcript-text">{seg.text}</span>
+                    <div key={i}>
+                      <div
+                        className={[
+                          'pp-transcript-segment',
+                          isActive ? 'pp-transcript-segment--active' : '',
+                          primaryInsight ? `pp-insight-segment pp-insight-segment--${primaryInsight.type}` : '',
+                        ].filter(Boolean).join(' ')}
+                        onClick={() => seekTo(seg.start)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === 'Enter' && seekTo(seg.start)}
+                        title={primaryInsight ? primaryInsight.label : 'Click to jump to this moment'}
+                      >
+                        <span className="pp-transcript-time">[{formatTime(seg.start)}]</span>
+                        <span className="pp-transcript-text">{seg.text}</span>
+                        {primaryInsight && (
+                          <span className="pp-insight-tag" aria-hidden>
+                            {INSIGHT_EMOJI[primaryInsight.type]}
+                          </span>
+                        )}
+                      </div>
+                      {primaryInsight && (
+                        <div className={`pp-insight-card pp-insight-card--${primaryInsight.type}`}>
+                          <span className="pp-insight-card-type">
+                            {INSIGHT_EMOJI[primaryInsight.type]} {primaryInsight.type}
+                          </span>
+                          <p className="pp-insight-card-label">{primaryInsight.label}</p>
+                          <p className="pp-insight-card-quote">"{primaryInsight.quote}"</p>
+                          {visibleInsights.length > 1 && (
+                            <span className="pp-muted" style={{ fontSize: '0.72rem' }}>
+                              +{visibleInsights.length - 1} more signal{visibleInsights.length > 2 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 })

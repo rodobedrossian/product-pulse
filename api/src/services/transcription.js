@@ -70,8 +70,8 @@ export async function transcribeRecording(recording) {
       response_format: 'verbose_json',
     })
 
-    // 5. Store completed transcript
-    await adminDb.from('transcripts').upsert({
+    // 5. Store completed transcript — select('id') so we can chain insight analysis
+    const { data: savedRow } = await adminDb.from('transcripts').upsert({
       recording_id:    recordingId,
       test_id,
       tid,
@@ -80,9 +80,20 @@ export async function transcribeRecording(recording) {
       segments:        result.segments ?? [],
       model_used:      'whisper-1',
       updated_at:      new Date().toISOString(),
-    }, { onConflict: 'recording_id' })
+    }, { onConflict: 'recording_id' }).select('id').single()
 
     console.log(`[transcription] done for recording ${recordingId} (${result.text?.length ?? 0} chars)`)
+
+    // 6. Fire-and-forget insight analysis — transcript status is already 'done'
+    //    so the UI can render the transcript immediately while insights load.
+    if (savedRow?.id) {
+      const { analyzeTranscript } = await import('./insights.js')
+      analyzeTranscript({
+        transcriptId:   savedRow.id,
+        transcriptText: result.text ?? '',
+        segments:       result.segments ?? [],
+      }).catch((err) => console.error('[insights] auto-trigger error:', err))
+    }
 
   } catch (err) {
     console.error(`[transcription] failed for recording ${recordingId}:`, err.message)

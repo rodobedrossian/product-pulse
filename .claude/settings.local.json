@@ -21,7 +21,8 @@
       "Bash(grep -r 'CREATE TABLE' '/Users/rodrigobedrossian/Product Pulse/api' --include=*.js --include=*.ts)",
       "WebFetch(domain:product-pulse-production.up.railway.app)",
       "Bash(node --input-type=module --experimental-vm-modules)",
-      "Bash(npx --yes acorn --ecma2020 --module src/pages/TestDetail.jsx)"
+      "Bash(npx --yes acorn --ecma2020 --module src/pages/TestDetail.jsx)",
+      "Bash(node --input-type=module)"
     ]
   }
 }

@@ -610,6 +610,108 @@ function SingleResults({ results, testId, navigate }) {
 
 // ─── Scenario results view ────────────────────────────────────────────────
 
+// ─── Insight Summary (cross-participant) ─────────────────────────────────────
+
+const INSIGHT_META = [
+  { type: 'confusion',   emoji: '🟡', label: 'Confused'    },
+  { type: 'frustration', emoji: '🔴', label: 'Frustrated'  },
+  { type: 'delight',     emoji: '🟢', label: 'Delighted'   },
+  { type: 'hesitation',  emoji: '🔵', label: 'Hesitant'    },
+  { type: 'discovery',   emoji: '✨', label: 'Discovery'   },
+  { type: 'comparison',  emoji: '⚪', label: 'Comparison'  },
+]
+
+function InsightsSummary({ testId }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [openSections, setOpenSections] = useState({})
+
+  useEffect(() => {
+    apiFetch(`/api/tests/${testId}/insights`)
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [testId])
+
+  if (loading) return <p className="pp-loading" style={{ padding: '1.5rem 0' }}>Loading insights…</p>
+  if (error) return <p className="error">Could not load insights: {error}</p>
+
+  if (!data || data.total_participants_with_insights === 0) {
+    return (
+      <div className="pp-insights-empty">
+        <p>No insights yet. Open a participant transcript and click <strong>✦ Analyze insights</strong> to start.</p>
+      </div>
+    )
+  }
+
+  // Sort types by count descending
+  const sortedTypes = INSIGHT_META
+    .map((m) => ({ ...m, count: data.type_counts?.[m.type] || 0 }))
+    .filter((m) => m.count > 0)
+    .sort((a, b) => b.count - a.count)
+
+  function toggleSection(type) {
+    setOpenSections((prev) => ({ ...prev, [type]: !prev[type] }))
+  }
+
+  return (
+    <div>
+      <p className="pp-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
+        {data.total_participants_with_insights} participant{data.total_participants_with_insights !== 1 ? 's' : ''} analyzed
+      </p>
+
+      {/* Stat grid */}
+      <div className="pp-insights-stat-grid">
+        {sortedTypes.map(({ type, emoji, label, count }) => (
+          <div key={type} className={`pp-insights-stat-card pp-insights-stat-card--${type}`}>
+            <span className="pp-insights-stat-count">{count}</span>
+            <span className="pp-insights-stat-label">{emoji} {label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Collapsible quote sections per type */}
+      {sortedTypes.map(({ type, emoji, label, count }) => {
+        const items = data.by_type?.[type] || []
+        const isOpen = openSections[type] ?? false
+        return (
+          <div key={type} className="pp-insights-section">
+            <div
+              className="pp-insights-section-header"
+              onClick={() => toggleSection(type)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && toggleSection(type)}
+            >
+              <span>{emoji} {count} {label} moment{count !== 1 ? 's' : ''}</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)' }}>{isOpen ? '▲' : '▼'}</span>
+            </div>
+            {isOpen && (
+              <div className="pp-insights-section-body">
+                {items.map((item, idx) => (
+                  <Link
+                    key={idx}
+                    to={`/tests/${testId}/participants/${item.participant_id}/transcript?recordingId=${item.recording_id}`}
+                    className="pp-insights-quote-card"
+                  >
+                    <div className="pp-insights-quote-meta">
+                      <span>{item.participant_name}</span>
+                      {item.start != null && <span>· {Math.floor(item.start / 60)}:{String(Math.floor(item.start % 60)).padStart(2, '0')}</span>}
+                    </div>
+                    <div className="pp-insights-quote-label">{item.label}</div>
+                    <div className="pp-insights-quote-text">"{item.quote}"</div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function ScenarioResults({ funnel, results, testId, navigate }) {
   const [expanded, setExpanded] = useState(null)
   const id = testId
@@ -844,6 +946,14 @@ export default function TestResults() {
           navigate={navigate}
         />
       )}
+
+      {/* ── Insights (all test types) ── */}
+      <section className="pp-card" style={{ marginTop: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <p className="pp-section-title" style={{ margin: 0 }}>✦ Insights</p>
+        </div>
+        <InsightsSummary testId={id} />
+      </section>
     </div>
   )
 }
