@@ -320,9 +320,14 @@ This build path:
     private func emitMicLevel() {
         guard let micRecorder else { return }
         micRecorder.updateMeters()
-        let db = micRecorder.averagePower(forChannel: 0)
-        // Map from roughly [-60, 0] dB to [0, 1] normalized range.
-        let normalized = max(0, min(1, (db + 60) / 60))
-        onAudioLevel?(normalized)
+        let avg  = micRecorder.averagePower(forChannel: 0)
+        let peak = micRecorder.peakPower(forChannel: 0)
+        // Blend average + peak so the meter is punchy but not just noise.
+        let db = avg * 0.55 + peak * 0.45
+        // Map -50…0 dB → 0…1 (ignore noise floor below -50 dB).
+        let linear = max(0, min(1, (db + 50) / 50))
+        // Gamma < 1 expands the low-mid range so quiet speech registers clearly.
+        let curved = pow(linear, 0.65)
+        onAudioLevel?(Float(curved))
     }
 }

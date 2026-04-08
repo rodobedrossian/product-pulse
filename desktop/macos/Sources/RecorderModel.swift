@@ -80,8 +80,10 @@ final class RecorderModel: ObservableObject {
             let rec = SystemMixedAudioRecorder(outputURL: outputURL) { [weak self] level in
                 guard let self else { return }
                 Task { @MainActor in
-                    // Smooth level changes so waveform is stable and readable.
-                    self.audioLevel = (self.audioLevel * 0.75) + (level * 0.25)
+                    // Asymmetric smoothing: fast attack so peaks register immediately,
+                    // slow decay so the waveform doesn't snap to silence between words.
+                    let alpha: Float = level > self.audioLevel ? 0.45 : 0.12
+                    self.audioLevel = self.audioLevel * (1 - alpha) + level * alpha
                 }
             }
             try await rec.start()
