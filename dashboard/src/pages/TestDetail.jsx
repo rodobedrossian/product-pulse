@@ -396,7 +396,7 @@ export default function TestDetail() {
   const [savedContext, setSavedContext]   = useState(false)
   const [importedFile, setImportedFile]   = useState(null)
   const [contextDropZoneActive, setContextDropZoneActive] = useState(false)
-  const [contextView, setContextView]     = useState('edit') // 'edit' | 'preview'
+  const [contextEditing, setContextEditing] = useState(false)
   const contextDragDepth                  = useRef(0)
   const fileInputRef                      = useRef(null)
   const [activeSection, setActiveSection] = useState('define')
@@ -575,7 +575,7 @@ export default function TestDetail() {
         text = await file.text()
       }
       setContextDraft(text)
-      setContextView('edit')
+      setContextEditing(false)
       await saveTestContext(text)
     } catch (err) {
       alert('Could not read file: ' + (err.message || String(err)))
@@ -873,7 +873,7 @@ export default function TestDetail() {
                 </span>
               </div>
               <div className="pp-notion-field-hint">
-                Background the AI uses when generating reports. Markdown supported — use Preview for formatted view.
+                Background the AI uses when generating reports. Context is shown formatted below; use Edit to change the markdown source.
                 Drag .md / .txt / .docx anywhere on this block or use Import.
               </div>
 
@@ -901,24 +901,27 @@ export default function TestDetail() {
                   </div>
                 )}
 
-                <div className="pp-inline pp-context-view-tabs" style={{ gap: '0.35rem', marginBottom: '0.45rem' }}>
-                  <button
-                    type="button"
-                    className={`pp-btn-sm${contextView === 'edit' ? ' primary' : ''}`}
-                    onClick={() => setContextView('edit')}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className={`pp-btn-sm${contextView === 'preview' ? ' primary' : ''}`}
-                    onClick={() => setContextView('preview')}
-                  >
-                    Preview
-                  </button>
+                <div className="pp-inline pp-context-edit-row" style={{ gap: '0.35rem', marginBottom: '0.45rem' }}>
+                  {contextEditing ? (
+                    <button
+                      type="button"
+                      className="pp-btn-sm primary"
+                      disabled={savingContext}
+                      onClick={() => {
+                        saveTestContext()
+                        setContextEditing(false)
+                      }}
+                    >
+                      Done
+                    </button>
+                  ) : (
+                    <button type="button" className="pp-btn-sm" onClick={() => setContextEditing(true)}>
+                      Edit
+                    </button>
+                  )}
                 </div>
 
-                {contextView === 'edit' ? (
+                {contextEditing ? (
                   <textarea
                     className="pp-notion-textarea pp-context-textarea"
                     placeholder={"# Test context\n\nDescribe the product, who the participants are, what you're validating, and any relevant background.\n\nMarkdown is supported."}
