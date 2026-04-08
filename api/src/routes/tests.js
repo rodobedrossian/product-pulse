@@ -356,4 +356,68 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json({ ...test, participants: participants || [], steps, tester_count: testerCount })
 })
 
+// GET /api/tests/:id/heatmap — aggregated click + mousemove coords grouped by page path
+router.get('/:id/heatmap', requireAuth, async (req, res) => {
+  const { id } = req.params
+
+  // Auth: test must belong to the caller's team
+  let query = adminDb.from('tests').select('id').eq('id', id)
+  if (req.teamId) query = query.eq('team_id', req.teamId)
+  const { data: test } = await query.single()
+  if (!test) return res.status(404).json({ error: 'Test not found' })
+
+  // Pull all pointer events that carry coordinate data
+  const { data: events, error } = await adminDb
+    .from('events')
+    .select('id, type, x, y, vw, vh, url, metadata, screenshot_object_path, timestamp')
+    .eq('test_id', id)
+    .in('type', ['click', 'mousemove_batch'])
+    .not('url', 'is', null)
+    .order('timestamp', { ascending: true })
+
+  if (error) return res.status(500).json({ error: error.message })
+  if (!events?.length) return res.json({ pages: [] })
+
+  // Group by normalised pathname (strip query string / hash)
+  const pageMap = new Map()
+  for (const ev of events) {
+    let path = ev.url
+    try { path = new URL(ev.url).pathname } catch { /* keep raw url */ }
+
+    if (!pageMap.has(path)) {
+      pageMap.set(path, { url: ev.url, path, clicks: [], moves: [], background: null })
+    }
+    const page = pageMap.get(path)
+
+    if (ev.type === 'click' && ev.x != null) {
+      page.clicks.push({ x: ev.x, y: ev.y })
+      // Use the first screenshot captured on this page as the background image
+      if (!page.background && ev.screenshot_object_path) {
+        page.background = ev.screenshot_object_path
+      }
+    }
+
+    if (ev.type === 'mousemove_batch' && Array.isArray(ev.metadata?.points)) {
+      for (const pt of ev.metadata.points) {
+        if (pt.x != null && pt.y != null) page.moves.push({ x: pt.x, y: pt.y })
+      }
+    }
+  }
+
+  const pages = Array.from(pageMap.values()).map(p => ({
+    path: p.path,
+    url: p.url,
+    click_count: p.clicks.length,
+    move_count:  p.moves.length,
+    clicks: p.clicks,
+    moves:  p.moves,
+    background_path: p.background ?? null
+  }))
+
+  // Sort by total activity descending
+  pages.sort((a, b) => (b.click_count + b.move_count) - (a.click_count + a.move_count))
+
+  res.json({ pages })
+})
+
 export default router

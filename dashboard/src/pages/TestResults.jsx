@@ -801,6 +801,9 @@ export default function TestResults() {
                 : 'Completion, time-to-goal, and full event timelines per participant.'}
           </p>
         </div>
+        <Link to={`/tests/${id}/heatmap`}>
+          <button type="button" className="pp-btn-sm">🔥 Heatmap</button>
+        </Link>
       </div>
 
       {researchIntent && (

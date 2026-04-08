@@ -346,7 +346,8 @@
     // --- Core send function ---
     // Sends the event immediately (without screenshot), then fires a follow-up
     // request with the screenshot attached once html2canvas finishes.
-    function send(type, selector, url, metadata) {
+    // coords (optional): { x, y, vw, vh } — normalised pointer position
+    function send(type, selector, url, metadata, coords) {
       var cleanedUrl = cleanUrl(url || location.href)
       var ts = new Date().toISOString()
       var payload = {
@@ -357,6 +358,12 @@
         url: cleanedUrl,
         metadata: metadata || null,
         timestamp: ts
+      }
+      if (coords) {
+        payload.x  = coords.x
+        payload.y  = coords.y
+        payload.vw = coords.vw
+        payload.vh = coords.vh
       }
 
       // Capture screenshot in parallel; send event data with it in a single request.
@@ -401,15 +408,45 @@
       return null
     }
 
-    // --- Click tracking (capture phase) ---
+    // --- Click tracking (capture phase, with normalised coordinates) ---
     document.addEventListener(
       'click',
       function (e) {
         var text = getClickText(e.target)
-        send('click', buildSelector(e.target), location.href, text ? { text: text } : null)
+        send(
+          'click',
+          buildSelector(e.target),
+          location.href,
+          text ? { text: text } : null,
+          { x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight,
+            vw: window.innerWidth, vh: window.innerHeight }
+        )
       },
       true
     )
+
+    // --- Mouse-movement heatmap (batched to keep event volume low) ---
+    ;(function () {
+      var _moveBuf = []
+      var _lastMove = 0
+      document.addEventListener('mousemove', function (e) {
+        var now = Date.now()
+        if (now - _lastMove < 500) return   // sample at most 2 pts/s
+        _lastMove = now
+        _moveBuf.push({
+          x: +(e.clientX / window.innerWidth).toFixed(4),
+          y: +(e.clientY / window.innerHeight).toFixed(4)
+        })
+      })
+      function flushMoves() {
+        if (!_moveBuf.length || !resolvedTid) return
+        var pts = _moveBuf.splice(0)
+        send('mousemove_batch', null, location.href, { points: pts },
+             { vw: window.innerWidth, vh: window.innerHeight })
+      }
+      setInterval(flushMoves, 10000)
+      window.addEventListener('pagehide', flushMoves)
+    })()
 
     // --- Input change tracking (selector only, never the value) ---
     document.addEventListener(

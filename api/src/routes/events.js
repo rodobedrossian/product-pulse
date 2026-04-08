@@ -24,7 +24,7 @@ function matchesGoal(event, def) {
 
 // POST /api/events — receive events from the snippet
 router.post('/', async (req, res) => {
-  const { tid, test_id, type, selector, url, metadata, timestamp, screenshot } = req.body
+  const { tid, test_id, type, selector, url, metadata, timestamp, screenshot, x, y, vw, vh } = req.body
 
   if (!tid || !test_id || !type || !timestamp) {
     return res.status(400).json({ error: 'Missing required fields: tid, test_id, type, timestamp' })
@@ -33,7 +33,8 @@ router.post('/', async (req, res) => {
   // Insert event (return id so we can link the screenshot)
   const { data: inserted, error } = await db
     .from('events')
-    .insert({ tid, test_id, type, selector, url, metadata, timestamp })
+    .insert({ tid, test_id, type, selector, url, metadata, timestamp,
+              x: x ?? null, y: y ?? null, vw: vw ?? null, vh: vh ?? null })
     .select('id')
     .single()
 

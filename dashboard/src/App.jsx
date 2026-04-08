@@ -5,6 +5,7 @@ import TestList from './pages/TestList.jsx'
 import CreateTest from './pages/CreateTest.jsx'
 import TestDetail from './pages/TestDetail.jsx'
 import TestResults from './pages/TestResults.jsx'
+import Heatmap from './pages/Heatmap.jsx'
 import SessionReplay from './pages/SessionReplay.jsx'
 import Auth from './pages/Auth.jsx'
 import Onboarding from './pages/Onboarding.jsx'
@@ -74,6 +75,7 @@ function Shell() {
           <Route path="/tests/new" element={<CreateTest />} />
           <Route path="/tests/:id" element={<TestDetail />} />
           <Route path="/tests/:id/results" element={<TestResults />} />
+          <Route path="/tests/:id/heatmap" element={<Heatmap />} />
           <Route path="/tests/:id/replay/:tid" element={<SessionReplay />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/docs" element={<Docs />} />
