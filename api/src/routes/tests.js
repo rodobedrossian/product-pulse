@@ -59,7 +59,7 @@ router.post('/', requireAuth, async (req, res) => {
 // POST /api/tests/:id/auto-session — no auth; observational snippet creates a participant session
 router.post('/:id/auto-session', async (req, res) => {
   const { id } = req.params
-  const { tester_key, referrer, browser, device_type } = req.body
+  const { tester_key, referrer, browser, device_type, tid: clientTid } = req.body
 
   if (!tester_key) return res.status(400).json({ error: 'tester_key is required' })
 
@@ -97,8 +97,9 @@ router.post('/:id/auto-session', async (req, res) => {
     testerId = newTester.id
   }
 
-  // Create a new participant session for this visit
-  const tid = randomUUID()
+  // Create a new participant session using the client-provided tid so events already
+  // sent under that tid are correctly associated with this participant record.
+  const tid = (clientTid && clientTid.length > 4) ? clientTid : randomUUID()
   const { error: partErr } = await db
     .from('participants')
     .insert({

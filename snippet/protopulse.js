@@ -224,16 +224,14 @@
     beginTracking(testId, tid, true)
   } else {
     // No tid in URL — check if this test is observational (auto-session)
-    ;(async function () {
-      try {
-        var r = await fetch(API_URL + '/api/tests/' + testId + '/tasks')
-        if (!r.ok) return
-        var data = await r.json()
-        if (data.test_type === 'observational') {
-          await initObservational(testId)
+    fetch(API_URL + '/api/tests/' + testId + '/tasks')
+      .then(function (r) { return r.ok ? r.json() : null })
+      .then(function (data) {
+        if (data && data.test_type === 'observational') {
+          initObservational(testId)
         }
-      } catch (e) {}
-    })()
+      })
+      .catch(function () {})
   }
 
   // ─── OBSERVATIONAL INIT ──────────────────────────────────────────────────────
@@ -252,7 +250,7 @@
     return 'Unknown'
   }
 
-  async function initObservational(resolvedTestId) {
+  function initObservational(resolvedTestId) {
     // 1. Persistent tester key in localStorage (survives tab/session close)
     var lsKey = OBS_LS_PREFIX + resolvedTestId
     var testerKey = null
@@ -273,51 +271,43 @@
     } catch (e) {}
 
     if (existingTid && (Date.now() - lastTs <= INACTIVITY_MS)) {
-      // Resume existing session
+      // Resume existing session — start tracking immediately, no API call needed
       try { sessionStorage.setItem(tsKey, String(Date.now())) } catch (e) {}
       beginTracking(resolvedTestId, existingTid, false)
       return
     }
 
-    // 3. Detect browser and device type (client-side)
-    var ua = navigator.userAgent
-    var browser = detectBrowser(ua)
-    var deviceType = /Mobi|Android/i.test(ua) ? 'mobile' : /Tablet|iPad/i.test(ua) ? 'tablet' : 'desktop'
-
-    // 4. Create a new session via the API (server captures IP)
-    var resp
-    try {
-      resp = await fetch(API_URL + '/api/tests/' + resolvedTestId + '/auto-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tester_key: testerKey,
-          referrer: document.referrer || '',
-          browser: browser,
-          device_type: deviceType
-        })
-      })
-    } catch (e) { return }
-
-    if (!resp.ok) return
-    var body
-    try { body = await resp.json() } catch (e) { return }
-    var newTid = body && body.tid
-    if (!newTid) return
-
-    // 5. Persist the new session ids
+    // 3. Generate a session tid locally — tracking starts without waiting for the server.
+    //    A locally-generated id is enough to associate events in this session.
+    var newTid = 'obs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10)
     try {
       sessionStorage.setItem(ssKey, newTid)
       sessionStorage.setItem(tsKey, String(Date.now()))
     } catch (e) {}
 
-    // 6. Refresh the inactivity timer on any user interaction
+    // 4. Start tracking IMMEDIATELY — events flow even if the session registration below fails
+    beginTracking(resolvedTestId, newTid, false)
+
+    // 5. Refresh the inactivity timer on any user interaction
     document.addEventListener('click', function () {
       try { sessionStorage.setItem(tsKey, String(Date.now())) } catch (e) {}
     }, { passive: true })
 
-    // 7. Start event tracking with the new session tid
-    beginTracking(resolvedTestId, newTid, false)
+    // 6. Register session with the API async (fire-and-forget).
+    //    This creates the participant record that shows up in the dashboard sessions table.
+    //    If it fails, events are still tracked — the session just won't have metadata.
+    var ua = navigator.userAgent
+    fetch(API_URL + '/api/tests/' + resolvedTestId + '/auto-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tid: newTid,
+        tester_key: testerKey,
+        referrer: document.referrer || '',
+        browser: detectBrowser(ua),
+        device_type: /Mobi|Android/i.test(ua) ? 'mobile' : /Tablet|iPad/i.test(ua) ? 'tablet' : 'desktop'
+      })
+    }).catch(function () {})
   }
 
   // ─── CORE TRACKING ───────────────────────────────────────────────────────────
