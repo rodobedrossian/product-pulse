@@ -1673,6 +1673,12 @@ details.pp-details[open] summary::before {
   box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
+/* ─── Test context textarea ──────────────────────────────────────── */
+.pp-context-textarea {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  line-height: 1.6;
+}
+
 .pp-step-goal {
   padding-top: 0.5rem;
   border-top: 1px solid var(--color-border);

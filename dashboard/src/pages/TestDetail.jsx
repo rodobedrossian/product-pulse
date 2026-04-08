@@ -390,6 +390,12 @@ export default function TestDetail() {
   const [showScript, setShowScript] = useState(false)
   const [intentDraft, setIntentDraft] = useState('')
   const [savingIntent, setSavingIntent] = useState(false)
+  const [contextDraft, setContextDraft]   = useState('')
+  const [savingContext, setSavingContext] = useState(false)
+  const [savedContext, setSavedContext]   = useState(false)
+  const [importedFile, setImportedFile]   = useState(null)
+  const [dropActive, setDropActive]       = useState(false)
+  const fileInputRef                      = useRef(null)
   const [recordingsByParticipant, setRecordingsByParticipant] = useState({})
   const [desktopMac, setDesktopMac] = useState(null)
   const [desktopWin, setDesktopWin] = useState(null)
@@ -463,6 +469,11 @@ export default function TestDetail() {
   }, [test?.id, test?.research_intent])
 
   useEffect(() => {
+    if (!test) return
+    setContextDraft(test.context ?? '')
+  }, [test?.id, test?.context])
+
+  useEffect(() => {
     if (!test?.participants?.length) {
       setRecordingsByParticipant({})
       return
@@ -503,6 +514,49 @@ export default function TestDetail() {
     } finally {
       setSavingIntent(false)
     }
+  }
+
+  async function saveTestContext() {
+    const next = contextDraft.trim()
+    if (next === (test.context ?? '').trim()) return
+    setSavingContext(true)
+    try {
+      const updated = await apiFetch(`/api/tests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ context: contextDraft })
+      })
+      setTest((t) => ({ ...t, context: updated.context }))
+      setSavedContext(true)
+      setTimeout(() => setSavedContext(false), 2000)
+    } catch (err) {
+      alert('Failed to save context: ' + err.message)
+    } finally {
+      setSavingContext(false)
+    }
+  }
+
+  async function handleContextFile(file) {
+    if (!file) return
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (!['md', 'txt', 'docx'].includes(ext)) {
+      alert('Only .md, .txt, and .docx files are supported.')
+      return
+    }
+    setImportedFile({ name: file.name })
+    if (ext === 'docx') {
+      const mammoth = await import('mammoth')
+      const result  = await mammoth.convertToMarkdown({ arrayBuffer: await file.arrayBuffer() })
+      setContextDraft(result.value)
+    } else {
+      setContextDraft(await file.text())
+    }
+  }
+
+  function handleContextDrop(e) {
+    e.preventDefault()
+    setDropActive(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f) handleContextFile(f)
   }
 
   function openGoalPicker(step = null) {
@@ -693,6 +747,114 @@ export default function TestDetail() {
           </section>
         </>
       )}
+
+      {/* ─── Test context ────────────────────────────────────────────────── */}
+      <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
+
+        {/* Card header */}
+        <div className="pp-inline" style={{ justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+          <div>
+            <h2 className="pp-section-title" style={{ margin: 0 }}>Test context</h2>
+            <span className="pp-muted" style={{ fontSize: '0.8125rem', display: 'block', marginTop: '0.2rem' }}>
+              Background the AI uses when generating reports from sessions, replays, and recordings. Optional.
+            </span>
+          </div>
+          {importedFile && (
+            <div className="pp-inline" style={{ gap: '0.4rem', flexShrink: 0, alignSelf: 'flex-start' }}>
+              <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>📄 {importedFile.name}</span>
+              <button
+                type="button"
+                className="pp-btn-sm"
+                onClick={() => { setImportedFile(null); setContextDraft('') }}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Empty state */}
+        {!contextDraft.trim() && !importedFile && (
+          <div style={{
+            textAlign: 'center',
+            padding: '1.5rem 1rem',
+            border: '1.5px dashed var(--color-border-strong)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-bg)',
+            marginBottom: '0.75rem',
+          }}>
+            <div style={{ fontSize: '1.75rem', lineHeight: 1, marginBottom: '0.5rem' }}>📋</div>
+            <p style={{ margin: '0 0 0.2rem', fontWeight: 600, color: 'var(--color-text)', fontSize: '0.9375rem' }}>
+              No context yet
+            </p>
+            <p className="pp-muted" style={{ margin: 0, fontSize: '0.8125rem' }}>
+              Write Markdown below or import a file — the AI uses this when summarising your sessions.
+            </p>
+          </div>
+        )}
+
+        {/* Textarea */}
+        <textarea
+          className="pp-step-textarea pp-context-textarea"
+          placeholder={"# Test context\n\nDescribe the product, who the participants are, what you're validating, and any relevant background.\n\nMarkdown is supported."}
+          rows={10}
+          value={contextDraft}
+          onChange={(e) => setContextDraft(e.target.value)}
+          onBlur={saveTestContext}
+          disabled={savingContext}
+          style={{ marginBottom: '0.5rem' }}
+        />
+
+        {/* Footer: char count + save status + drop zone */}
+        <div className="pp-inline" style={{ justifyContent: 'space-between' }}>
+          <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
+            {contextDraft.length.toLocaleString()} chars
+            {contextDraft.length >= 5000 && (
+              <span style={{ color: 'var(--color-warn)', marginLeft: '0.35rem' }}>· Getting long</span>
+            )}
+            {savingContext && <span style={{ marginLeft: '0.35rem' }}>· Saving…</span>}
+            {savedContext && !savingContext && (
+              <span style={{ color: 'var(--color-success)', marginLeft: '0.35rem' }}>· Saved</span>
+            )}
+          </span>
+
+          {/* File import drop zone */}
+          <div
+            onDrop={handleContextDrop}
+            onDragOver={(e) => { e.preventDefault(); setDropActive(true) }}
+            onDragLeave={() => setDropActive(false)}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.3rem 0.65rem',
+              border: `1px dashed ${dropActive ? 'var(--color-accent)' : 'var(--color-border-strong)'}`,
+              borderRadius: 'var(--radius-sm)',
+              background: dropActive ? 'var(--color-info-bg)' : 'transparent',
+              cursor: 'pointer',
+              fontSize: '0.8125rem',
+              color: 'var(--color-text-secondary)',
+              transition: 'border-color 0.15s, background 0.15s',
+              userSelect: 'none',
+            }}
+          >
+            <span>↑</span>
+            <span>Import .md / .txt / .docx</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,.txt,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) handleContextFile(f)
+                e.target.value = ''
+              }}
+            />
+          </div>
+        </div>
+      </section>
 
       {/* Pending goal banner */}
       {pendingGoal && (

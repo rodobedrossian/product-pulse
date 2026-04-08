@@ -209,13 +209,14 @@ router.get('/:id/heartbeat', async (req, res) => {
 // PATCH /api/tests/:id — partial update
 router.patch('/:id', requireAuth, async (req, res) => {
   const { id } = req.params
-  const { goal_event, start_event, name, prototype_url, research_intent } = req.body
+  const { goal_event, start_event, name, prototype_url, research_intent, context } = req.body
   const updates = {}
   if (goal_event !== undefined) updates.goal_event = goal_event
   if (start_event !== undefined) updates.start_event = start_event
   if (name !== undefined) updates.name = name
   if (prototype_url !== undefined) updates.prototype_url = prototype_url
   if (research_intent !== undefined) updates.research_intent = normalizeResearchIntent(research_intent)
+  if (context !== undefined) updates.context = context === '' ? null : String(context)
   if (Object.keys(updates).length === 0)
     return res.status(400).json({ error: 'No fields to update' })
 
