@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
 import ParticipantAudioRecorder from '../components/ParticipantAudioRecorder.jsx'
+import ContextMarkdownPreview from '../components/ContextMarkdownPreview.jsx'
 
 const API_URL = getApiBase() || 'http://localhost:3001'
 const RESEARCH_INTENT_MAX = 2000
@@ -394,7 +395,9 @@ export default function TestDetail() {
   const [savingContext, setSavingContext] = useState(false)
   const [savedContext, setSavedContext]   = useState(false)
   const [importedFile, setImportedFile]   = useState(null)
-  const [dropActive, setDropActive]       = useState(false)
+  const [contextDropZoneActive, setContextDropZoneActive] = useState(false)
+  const [contextView, setContextView]     = useState('edit') // 'edit' | 'preview'
+  const contextDragDepth                  = useRef(0)
   const fileInputRef                      = useRef(null)
   const [activeSection, setActiveSection] = useState('define')
   const [recordingsByParticipant, setRecordingsByParticipant] = useState({})
@@ -533,14 +536,16 @@ export default function TestDetail() {
     }
   }
 
-  async function saveTestContext() {
-    const next = contextDraft.trim()
+  async function saveTestContext(overrideText) {
+    if (!test) return
+    const raw = overrideText !== undefined ? String(overrideText) : contextDraft
+    const next = raw.trim()
     if (next === (test.context ?? '').trim()) return
     setSavingContext(true)
     try {
       const updated = await apiFetch(`/api/tests/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ context: contextDraft })
+        body: JSON.stringify({ context: raw })
       })
       setTest((t) => ({ ...t, context: updated.context }))
       setSavedContext(true)
@@ -560,18 +565,52 @@ export default function TestDetail() {
       return
     }
     setImportedFile({ name: file.name })
-    if (ext === 'docx') {
-      const mammoth = await import('mammoth')
-      const result  = await mammoth.convertToMarkdown({ arrayBuffer: await file.arrayBuffer() })
-      setContextDraft(result.value)
-    } else {
-      setContextDraft(await file.text())
+    try {
+      let text
+      if (ext === 'docx') {
+        const mammoth = await import('mammoth')
+        const result = await mammoth.convertToMarkdown({ arrayBuffer: await file.arrayBuffer() })
+        text = result.value
+      } else {
+        text = await file.text()
+      }
+      setContextDraft(text)
+      setContextView('edit')
+      await saveTestContext(text)
+    } catch (err) {
+      alert('Could not read file: ' + (err.message || String(err)))
+      setImportedFile(null)
     }
+  }
+
+  function handleContextDragEnter(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    contextDragDepth.current += 1
+    setContextDropZoneActive(true)
+  }
+
+  function handleContextDragLeave(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    contextDragDepth.current -= 1
+    if (contextDragDepth.current <= 0) {
+      contextDragDepth.current = 0
+      setContextDropZoneActive(false)
+    }
+  }
+
+  function handleContextDragOver(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
   }
 
   function handleContextDrop(e) {
     e.preventDefault()
-    setDropActive(false)
+    e.stopPropagation()
+    contextDragDepth.current = 0
+    setContextDropZoneActive(false)
     const f = e.dataTransfer.files?.[0]
     if (f) handleContextFile(f)
   }
@@ -834,58 +873,104 @@ export default function TestDetail() {
                 </span>
               </div>
               <div className="pp-notion-field-hint">
-                Background the AI uses when generating reports. Describe the product, participants, and what you're validating. Markdown supported.
+                Background the AI uses when generating reports. Markdown supported — use Preview for formatted view.
+                Drag .md / .txt / .docx anywhere on this block or use Import.
               </div>
 
-              {importedFile && (
-                <div className="pp-inline" style={{ gap: '0.4rem', marginBottom: '0.4rem' }}>
-                  <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>📄 {importedFile.name}</span>
+              <div
+                className={`pp-context-dropzone${contextDropZoneActive ? ' is-drag-over' : ''}`}
+                onDragEnter={handleContextDragEnter}
+                onDragLeave={handleContextDragLeave}
+                onDragOver={handleContextDragOver}
+                onDrop={handleContextDrop}
+              >
+                {importedFile && (
+                  <div className="pp-inline" style={{ gap: '0.4rem', marginBottom: '0.4rem' }}>
+                    <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>📄 {importedFile.name}</span>
+                    <button
+                      type="button"
+                      className="pp-btn-sm"
+                      onClick={() => {
+                        setImportedFile(null)
+                        setContextDraft('')
+                        saveTestContext('')
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+
+                <div className="pp-inline pp-context-view-tabs" style={{ gap: '0.35rem', marginBottom: '0.45rem' }}>
                   <button
                     type="button"
-                    className="pp-btn-sm"
-                    onClick={() => { setImportedFile(null); setContextDraft('') }}
+                    className={`pp-btn-sm${contextView === 'edit' ? ' primary' : ''}`}
+                    onClick={() => setContextView('edit')}
                   >
-                    Clear
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={`pp-btn-sm${contextView === 'preview' ? ' primary' : ''}`}
+                    onClick={() => setContextView('preview')}
+                  >
+                    Preview
                   </button>
                 </div>
-              )}
 
-              <textarea
-                className="pp-notion-textarea pp-context-textarea"
-                placeholder={"# Test context\n\nDescribe the product, who the participants are, what you're validating, and any relevant background.\n\nMarkdown is supported."}
-                rows={8}
-                value={contextDraft}
-                onChange={(e) => setContextDraft(e.target.value)}
-                onBlur={saveTestContext}
-                disabled={savingContext}
-              />
-
-              <div className="pp-inline" style={{ justifyContent: 'space-between', marginTop: '0.4rem' }}>
-                <div className="pp-notion-saving">
-                  {contextDraft.length.toLocaleString()} chars
-                  {contextDraft.length >= 5000 && (
-                    <span style={{ color: 'var(--color-warn)', marginLeft: '0.35rem' }}>· Getting long</span>
-                  )}
-                  {savingContext && <span style={{ marginLeft: '0.35rem' }}>· Saving…</span>}
-                  {savedContext && !savingContext && (
-                    <span style={{ color: 'var(--color-success)', marginLeft: '0.35rem' }}>· Saved</span>
-                  )}
-                </div>
-                <div
-                  className={`pp-notion-file-import${dropActive ? ' is-active' : ''}`}
-                  onDrop={handleContextDrop}
-                  onDragOver={(e) => { e.preventDefault(); setDropActive(true) }}
-                  onDragLeave={() => setDropActive(false)}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  ↑ Import .md / .txt / .docx
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".md,.txt,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    style={{ display: 'none' }}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleContextFile(f); e.target.value = '' }}
+                {contextView === 'edit' ? (
+                  <textarea
+                    className="pp-notion-textarea pp-context-textarea"
+                    placeholder={"# Test context\n\nDescribe the product, who the participants are, what you're validating, and any relevant background.\n\nMarkdown is supported."}
+                    rows={8}
+                    value={contextDraft}
+                    onChange={(e) => setContextDraft(e.target.value)}
+                    onBlur={() => saveTestContext()}
+                    onDragOver={handleContextDragOver}
+                    disabled={savingContext}
                   />
+                ) : (
+                  <div className="pp-context-preview-pane">
+                    <ContextMarkdownPreview markdown={contextDraft} />
+                  </div>
+                )}
+
+                <div className="pp-inline" style={{ justifyContent: 'space-between', marginTop: '0.4rem' }}>
+                  <div className="pp-notion-saving">
+                    {contextDraft.length.toLocaleString()} chars
+                    {contextDraft.length >= 5000 && (
+                      <span style={{ color: 'var(--color-warn)', marginLeft: '0.35rem' }}>· Getting long</span>
+                    )}
+                    {savingContext && <span style={{ marginLeft: '0.35rem' }}>· Saving…</span>}
+                    {savedContext && !savingContext && (
+                      <span style={{ color: 'var(--color-success)', marginLeft: '0.35rem' }}>· Saved</span>
+                    )}
+                  </div>
+                  <div
+                    className="pp-notion-file-import"
+                    onClick={() => fileInputRef.current?.click()}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        fileInputRef.current?.click()
+                      }
+                    }}
+                  >
+                    ↑ Import .md / .txt / .docx
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".md,.txt,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleContextFile(f)
+                        e.target.value = ''
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

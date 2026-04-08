@@ -143,6 +143,7 @@ router.get('/:id/results', requireAuth, async (req, res) => {
       test_id: id,
       test_type: 'observational',
       research_intent: test.research_intent ?? null,
+      context: test.context ?? null,
       total_sessions: participants.length,
       unique_testers: uniqueTesters,
       returning_testers: returningTesters,
@@ -232,6 +233,7 @@ router.get('/:id/results', requireAuth, async (req, res) => {
       test_id: id,
       test_type: 'scenario',
       research_intent: test.research_intent ?? null,
+      context: test.context ?? null,
       funnel,
       results
     })
@@ -318,6 +320,7 @@ router.get('/:id/results', requireAuth, async (req, res) => {
     test_id: id,
     test_type: 'single',
     research_intent: test.research_intent ?? null,
+    context: test.context ?? null,
     results
   })
 })

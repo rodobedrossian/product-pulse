@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
+import ContextMarkdownPreview from '../components/ContextMarkdownPreview.jsx'
 
 function formatMs(ms) {
   if (ms == null) return '—'
@@ -786,6 +787,7 @@ export default function TestResults() {
   const isScenario = data.test_type === 'scenario'
   const isObservational = data.test_type === 'observational'
   const researchIntent = data.research_intent?.trim()
+  const testContext = data.context?.trim()
 
   return (
     <div className="pp-page">
@@ -810,6 +812,15 @@ export default function TestResults() {
         <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
           <p className="pp-kicker" style={{ marginBottom: '0.5rem' }}>What you&apos;re testing</p>
           <p style={{ margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{researchIntent}</p>
+        </section>
+      )}
+
+      {testContext && (
+        <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
+          <p className="pp-kicker" style={{ marginBottom: '0.5rem' }}>Test context</p>
+          <div className="pp-results-context-markdown">
+            <ContextMarkdownPreview markdown={data.context} />
+          </div>
         </section>
       )}
 
