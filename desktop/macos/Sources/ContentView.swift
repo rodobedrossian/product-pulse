@@ -4,43 +4,38 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var model: RecorderModel
 
-    private let cardFill = Color(red: 0.11, green: 0.11, blue: 0.11)
-    private let cardStroke = Color.white.opacity(0.08)
+    private let cardFill = Color.white
+    private let cardStroke = Color.black.opacity(0.08)
     private let accentBlue = Color(red: 0.22, green: 0.51, blue: 1.0)
-    private let subtext = Color.white.opacity(0.55)
+    private let subtext = Color.black.opacity(0.55)
 
     var body: some View {
-        ZStack {
-            Color(red: 0.07, green: 0.07, blue: 0.08)
-                .ignoresSafeArea()
-
-            mainCard
-                .padding(20)
-                .frame(width: 400)
-        }
-        .frame(width: 440, height: 280)
+        mainCard
+            .padding(24)
+            .frame(width: 560, height: 340)
+            .background(Color.clear)
         .onOpenURL { model.apply(url: $0) }
     }
 
     private var mainCard: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 14) {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                        .frame(width: 44, height: 44)
+                        .fill(Color.black.opacity(0.05))
+                        .frame(width: 54, height: 54)
                     Image(systemName: iconName)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(.black.opacity(0.85))
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(headline)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(.black)
                     if let sub = subline {
                         Text(sub)
-                            .font(.system(size: 12))
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(subtext)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -50,27 +45,32 @@ struct ContentView: View {
 
                 primaryControl
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+
+            if model.isRecording {
+                RecordingLevelView(level: model.audioLevel, elapsed: model.elapsedLabel)
+                    .padding(.horizontal, 18)
+            }
+
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 1)
+                .padding(.horizontal, 18)
 
             if model.lastError != nil {
                 errorStrip
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 18)
                     .padding(.bottom, 12)
             } else {
-                Rectangle()
-                    .fill(Color.white.opacity(0.07))
-                    .frame(height: 1)
-                    .padding(.horizontal, 16)
-
                 Text(footerDisclaimer)
-                    .font(.system(size: 10))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(subtext)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .lineLimit(2)
                     .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .background(
@@ -80,6 +80,7 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(cardStroke, lineWidth: 1)
                 )
+                .shadow(color: .black.opacity(0.14), radius: 20, x: 0, y: 12)
         )
     }
 
@@ -102,7 +103,7 @@ struct ContentView: View {
 
     private var subline: String? {
         if model.isUploading { return "Sending to your workspace" }
-        if model.isRecording { return "Stop when you’re done" }
+        if model.isRecording { return "Audio capture in progress" }
         if model.isStartingCapture { return "Allow prompts if shown" }
         if model.status.contains("Upload complete") { return "You can close this window" }
         if model.token != nil { return "Confirm consent on the call, then start" }
@@ -118,18 +119,18 @@ struct ContentView: View {
     private var primaryControl: some View {
         if model.isUploading {
             ProgressView()
-                .scaleEffect(0.9)
-                .tint(.white)
-                .frame(width: 120, height: 36)
+                .scaleEffect(1.0)
+                .tint(.black)
+                .frame(width: 140, height: 44)
         } else if model.isRecording {
             Button {
                 Task { await model.stopAndUpload() }
             } label: {
                 Text("Stop & save")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 11)
                     .background(
                         Capsule(style: .continuous)
                             .fill(accentBlue)
@@ -142,10 +143,10 @@ struct ContentView: View {
                 model.startRecording()
             } label: {
                 Text(model.isStartingCapture ? "Starting…" : "Start recording")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 11)
                     .background(
                         Capsule(style: .continuous)
                             .fill(model.canRecord && !model.isStartingCapture ? accentBlue : accentBlue.opacity(0.35))
@@ -161,7 +162,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView {
                 Text(model.lastError ?? "")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(Color(red: 1, green: 0.45, blue: 0.45))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -171,16 +172,68 @@ struct ContentView: View {
                 Button("Screen & audio access") {
                     MacPrivacySettings.openScreenRecordingPane()
                 }
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(accentBlue.opacity(0.95))
 
                 Button("Microphone") {
                     MacPrivacySettings.openMicrophonePane()
                 }
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(accentBlue.opacity(0.95))
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+private struct RecordingLevelView: View {
+    let level: Float
+    let elapsed: String
+
+    private var bars: [CGFloat] {
+        let base = CGFloat(max(0.08, min(1, level)))
+        return [
+            max(0.10, base * 0.55),
+            max(0.12, base * 0.80),
+            max(0.15, base * 1.00),
+            max(0.12, base * 0.82),
+            max(0.10, base * 0.60),
+            max(0.10, base * 0.70),
+            max(0.12, base * 0.90),
+            max(0.10, base * 0.62)
+        ]
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(elapsed)
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.black.opacity(0.75))
+                .frame(minWidth: 54, alignment: .leading)
+
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(Array(bars.enumerated()), id: \.offset) { _, h in
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color(red: 0.22, green: 0.51, blue: 1.0))
+                        .frame(width: 6, height: 10 + (h * 34))
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: level)
+
+            Text(level > 0.08 ? "Audio detected" : "Listening…")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.black.opacity(0.55))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(red: 0.97, green: 0.98, blue: 1.0))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.05), lineWidth: 1)
+                )
+        )
     }
 }

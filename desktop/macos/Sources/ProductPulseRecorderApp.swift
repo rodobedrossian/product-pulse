@@ -11,7 +11,7 @@ struct ProductPulseRecorderApp: App {
             ContentView()
                 .environmentObject(model)
         }
-        .defaultSize(width: 440, height: 280)
+        .defaultSize(width: 560, height: 340)
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}

@@ -15,9 +15,12 @@ final class RecorderModel: ObservableObject {
     @Published var isUploading = false
     @Published var isStartingCapture = false
     @Published var lastError: String?
+    @Published var elapsedSeconds: Int = 0
+    @Published var audioLevel: Float = 0
 
     private var sckRecorder: SystemMixedAudioRecorder?
     private var recordStartedAt: Date?
+    private var timer: Timer?
 
     private static var recordFileURL: URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("productpulse-recording.m4a")
@@ -63,6 +66,8 @@ final class RecorderModel: ObservableObject {
         try? FileManager.default.removeItem(at: url)
 
         isStartingCapture = true
+        elapsedSeconds = 0
+        audioLevel = 0
         status = "Starting… Allow Screen Recording and Microphone if macOS asks."
         Task {
             await startRecordingTask(outputURL: url)
@@ -72,17 +77,26 @@ final class RecorderModel: ObservableObject {
 
     private func startRecordingTask(outputURL: URL) async {
         do {
-            let rec = SystemMixedAudioRecorder(outputURL: outputURL)
+            let rec = SystemMixedAudioRecorder(outputURL: outputURL) { [weak self] level in
+                guard let self else { return }
+                Task { @MainActor in
+                    // Smooth level changes so waveform is stable and readable.
+                    self.audioLevel = (self.audioLevel * 0.75) + (level * 0.25)
+                }
+            }
             try await rec.start()
             sckRecorder = rec
             recordStartedAt = Date()
             isRecording = true
+            startTimer()
             status =
                 "Recording… This includes system audio (Meet, Zoom, browser) and your mic. Stop when the session ends."
         } catch {
             sckRecorder = nil
             recordStartedAt = nil
             isRecording = false
+            stopTimer(resetElapsed: true)
+            audioLevel = 0
             lastError = error.localizedDescription
             status = "Could not start recording. See details below."
         }
@@ -93,6 +107,8 @@ final class RecorderModel: ObservableObject {
         let started = recordStartedAt
         recordStartedAt = nil
         isRecording = false
+        stopTimer(resetElapsed: false)
+        audioLevel = 0
 
         let rec = sckRecorder
         sckRecorder = nil
@@ -103,6 +119,7 @@ final class RecorderModel: ObservableObject {
             } catch {
                 lastError = error.localizedDescription
                 status = "Failed to finalize recording."
+                stopTimer(resetElapsed: true)
                 return
             }
         }
@@ -114,6 +131,7 @@ final class RecorderModel: ObservableObject {
             let participantId
         else {
             status = "Missing session data."
+            stopTimer(resetElapsed: true)
             return
         }
 
@@ -124,6 +142,7 @@ final class RecorderModel: ObservableObject {
             lastError = nil
             status =
                 "No usable audio file (empty or missing). Keep sound playing during the call (Meet/Chrome), confirm Screen Recording + Microphone for this app, then record again."
+            stopTimer(resetElapsed: true)
             return
         }
 
@@ -142,15 +161,44 @@ final class RecorderModel: ObservableObject {
             )
             status = "Upload complete. You can close this window or open another link."
             try? FileManager.default.removeItem(at: fileURL)
+            stopTimer(resetElapsed: true)
+            audioLevel = 0
         } catch {
             // Keep the local file on failure so the recording isn't lost.
             let errMsg = error.localizedDescription
             if errMsg.lowercased().contains("unauthorized") || errMsg.contains("401") {
-                lastError = "Session token expired. Open a fresh "Record with desktop app" link from the dashboard and try again. Your local recording is still saved."
+                lastError = "Session token expired. Open a fresh \"Record with desktop app\" link from the dashboard and try again. Your local recording is still saved."
             } else {
                 lastError = errMsg
             }
             status = "Upload failed — local recording preserved."
+            stopTimer(resetElapsed: true)
+            audioLevel = 0
+        }
+    }
+
+    var elapsedLabel: String {
+        let minutes = elapsedSeconds / 60
+        let seconds = elapsedSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                guard self.isRecording, let started = self.recordStartedAt else { return }
+                self.elapsedSeconds = Int(Date().timeIntervalSince(started))
+            }
+        }
+    }
+
+    private func stopTimer(resetElapsed: Bool) {
+        timer?.invalidate()
+        timer = nil
+        if resetElapsed {
+            elapsedSeconds = 0
         }
     }
 

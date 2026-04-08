@@ -21,15 +21,17 @@ final class SystemMixedAudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate
     private var appendFailureCount = 0
 
     private var micRecorder: AVAudioRecorder?
+    private let onAudioLevel: (@Sendable (Float) -> Void)?
 
     private let log = Logger(subsystem: "com.productpulse.recorder", category: "SCK")
 
-    init(outputURL: URL) {
+    init(outputURL: URL, onAudioLevel: (@Sendable (Float) -> Void)? = nil) {
         self.finalOutputURL = outputURL
         let dir = outputURL.deletingLastPathComponent()
         let id = UUID().uuidString.prefix(8)
         self.systemTempURL = dir.appendingPathComponent("productpulse-sys-\(id).m4a")
         self.micTempURL = dir.appendingPathComponent("productpulse-mic-\(id).m4a")
+        self.onAudioLevel = onAudioLevel
     }
 
     func start() async throws {
@@ -99,7 +101,7 @@ This build path:
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
         let rec = try AVAudioRecorder(url: micTempURL, settings: settings)
-        rec.isMeteringEnabled = false
+        rec.isMeteringEnabled = true
         guard rec.prepareToRecord(), rec.record() else {
             throw NSError(
                 domain: "ProductPulse",
@@ -254,6 +256,7 @@ This build path:
 
     private func handleSystemAudio(_ sampleBuffer: CMSampleBuffer) {
         receivedAudioSampleCount += 1
+        emitMicLevel()
 
         if assetWriter == nil {
             let hint = CMSampleBufferGetFormatDescription(sampleBuffer)
@@ -312,5 +315,14 @@ This build path:
         if (error as NSError).code != 0 {
             log.warning("stream stopped: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func emitMicLevel() {
+        guard let micRecorder else { return }
+        micRecorder.updateMeters()
+        let db = micRecorder.averagePower(forChannel: 0)
+        // Map from roughly [-60, 0] dB to [0, 1] normalized range.
+        let normalized = max(0, min(1, (db + 60) / 60))
+        onAudioLevel?(normalized)
     }
 }
