@@ -7,6 +7,14 @@ import ParticipantAudioRecorder from '../components/ParticipantAudioRecorder.jsx
 const API_URL = getApiBase() || 'http://localhost:3001'
 const RESEARCH_INTENT_MAX = 2000
 
+function SectionJump({ href, label }) {
+  return (
+    <a className="pp-test-jump" href={href}>
+      {label}
+    </a>
+  )
+}
+
 function pathnameFromUrl(url) {
   try {
     return new URL(url).pathname
@@ -675,6 +683,26 @@ export default function TestDetail() {
         ? 'pp-heartbeat-card pp-heartbeat-card--warn'
         : 'pp-heartbeat-card'
 
+  const hasIntent = String(test.research_intent || '').trim().length > 0
+  const hasContext = String(test.context || '').trim().length > 0
+  const hasSnippetLive = !!heartbeat?.active
+  const hasParticipants = (test.participants?.length || 0) > 0
+  const hasScenarioSteps = !isScenario || steps.length > 0
+  const hasScenarioGoals = !isScenario || steps.every(stepHasDefinedGoal)
+  const hasSingleGoalReady = isScenario || isObservational || hasGoal
+  const isSetupReady = hasSnippetLive && hasParticipants && hasScenarioSteps && hasScenarioGoals && hasSingleGoalReady
+
+  const nextAction = (() => {
+    if (!hasIntent) return 'Add your research question'
+    if (!hasContext) return 'Add test context for AI reports'
+    if (isScenario && !hasScenarioSteps) return 'Add your first scenario step'
+    if (isScenario && !hasScenarioGoals) return 'Define goals for each step'
+    if (!isScenario && !isObservational && !hasSingleGoalReady) return 'Define a success goal'
+    if (!hasSnippetLive) return 'Install and validate snippet'
+    if (!hasParticipants) return isObservational ? 'Wait for first session' : 'Add participants'
+    return 'View incoming results'
+  })()
+
   return (
     <div className="pp-page pp-stack">
       <div>
@@ -711,7 +739,46 @@ export default function TestDetail() {
             </Link>
           </div>
         </div>
+        <div className="pp-test-toolbar">
+          <div className="pp-test-jumps" aria-label="Jump to section">
+            <SectionJump href="#setup" label="Setup" />
+            {isObservational ? <SectionJump href="#sessions" label="Sessions" /> : <SectionJump href="#participants" label="Participants" />}
+            <SectionJump href="#instrumentation" label="Run" />
+            <SectionJump href={`/tests/${id}/results`} label="Results" />
+          </div>
+          <div className="pp-test-next">
+            <span className="pp-kicker" style={{ marginBottom: 0 }}>Next best action</span>
+            <strong>{nextAction}</strong>
+          </div>
+        </div>
       </div>
+
+      <section className="pp-card pp-test-checklist-card" id="setup">
+        <div className="pp-inline" style={{ justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+          <h2 className="pp-section-title" style={{ margin: 0 }}>Setup progress</h2>
+          <span className={`badge ${isSetupReady ? 'green' : 'amber'}`}>{isSetupReady ? 'Ready to run' : 'In setup'}</span>
+        </div>
+        <div className="pp-test-checklist">
+          <div className={`pp-test-checkitem ${hasIntent ? 'is-done' : ''}`}>Research question</div>
+          <div className={`pp-test-checkitem ${hasContext ? 'is-done' : ''}`}>Test context</div>
+          {!isObservational && (
+            <div className={`pp-test-checkitem ${hasParticipants ? 'is-done' : ''}`}>Participants</div>
+          )}
+          {!isScenario && !isObservational && (
+            <div className={`pp-test-checkitem ${hasSingleGoalReady ? 'is-done' : ''}`}>Success goal</div>
+          )}
+          {isScenario && (
+            <>
+              <div className={`pp-test-checkitem ${hasScenarioSteps ? 'is-done' : ''}`}>Script steps</div>
+              <div className={`pp-test-checkitem ${hasScenarioGoals ? 'is-done' : ''}`}>Step goals</div>
+            </>
+          )}
+          <div className={`pp-test-checkitem ${hasSnippetLive ? 'is-done' : ''}`}>Snippet receiving events</div>
+          {isObservational && (
+            <div className={`pp-test-checkitem ${hasParticipants ? 'is-done' : ''}`}>Sessions collected</div>
+          )}
+        </div>
+      </section>
 
       {!isScenario && !isObservational && (
         <>
@@ -921,7 +988,7 @@ export default function TestDetail() {
       )}
 
       {/* Heartbeat */}
-      <section className={hbClass}>
+      <section className={hbClass} id="instrumentation">
         <div className="pp-heartbeat">
           <div className="pp-inline">
             <span className="pp-heartbeat-label">Snippet status</span>
@@ -1013,7 +1080,7 @@ export default function TestDetail() {
       {/* Observational: research intent + sessions list */}
       {isObservational && (
         <>
-          <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
+          <section className="pp-card" style={{ marginBottom: '1.25rem' }} id="sessions">
             <label className="pp-step-field-label" style={{ display: 'block', marginBottom: 0 }}>
               <span>What you&apos;re trying to learn</span>
               <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem', display: 'block', marginTop: '0.2rem' }}>
@@ -1112,7 +1179,7 @@ export default function TestDetail() {
 
       {/* Directed tests: Participants */}
       {!isObservational && (
-      <section className="pp-card">
+      <section className="pp-card" id="participants">
         <h2 className="pp-section-title">Participants ({test.participants.length})</h2>
         <p className="pp-muted" style={{ fontSize: '0.8125rem', margin: '0 0 0.85rem', lineHeight: 1.45 }}>
           {desktopMac?.download_url || desktopWin?.download_url ? (
