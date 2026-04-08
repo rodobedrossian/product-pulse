@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Notion-inspired compact recorder: fixed footprint, clear hierarchy, no technical clutter.
@@ -10,10 +11,25 @@ struct ContentView: View {
     private let subtext = Color.black.opacity(0.55)
 
     var body: some View {
-        mainCard
-            .padding(24)
-            .frame(width: 560, height: 340)
-            .background(Color.clear)
+        ZStack {
+            mainCard
+                .padding(24)
+                .frame(width: 560, height: 340)
+                .background(Color.clear)
+
+            VStack {
+                HStack {
+                    closeButton
+                    Spacer()
+                }
+                .padding(.top, 12)
+                .padding(.leading, 16)
+                Spacer()
+            }
+
+            WindowConfigurator()
+                .frame(width: 0, height: 0)
+        }
         .onOpenURL { model.apply(url: $0) }
     }
 
@@ -115,6 +131,27 @@ struct ContentView: View {
         "Confirm verbal consent before you record. Only participants who agreed should be captured."
     }
 
+    private var closeButton: some View {
+        Button {
+            NSApp.keyWindow?.performClose(nil)
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.68))
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.9))
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color.black.opacity(0.09), lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .help("Close")
+    }
+
     @ViewBuilder
     private var primaryControl: some View {
         if model.isUploading {
@@ -186,6 +223,38 @@ struct ContentView: View {
     }
 }
 
+private struct WindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            configure(window: window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = nsView.window else { return }
+            configure(window: window)
+        }
+    }
+
+    private func configure(window: NSWindow) {
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+
+        // Keep native resize/move behavior, but hide default window chrome.
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+    }
+}
+
 private struct RecordingLevelView: View {
     let level: Float
     let elapsed: String
@@ -214,11 +283,20 @@ private struct RecordingLevelView: View {
             HStack(alignment: .bottom, spacing: 4) {
                 ForEach(Array(bars.enumerated()), id: \.offset) { _, h in
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Color(red: 0.22, green: 0.51, blue: 1.0))
-                        .frame(width: 6, height: 10 + (h * 34))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.17, green: 0.44, blue: 0.95),
+                                    Color(red: 0.12, green: 0.64, blue: 0.86)
+                                ],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                        .frame(width: 8, height: 12 + (h * 34))
                 }
             }
-            .animation(.easeOut(duration: 0.12), value: level)
+            .animation(.easeOut(duration: 0.32), value: level)
 
             Text(level > 0.08 ? "Audio detected" : "Listening…")
                 .font(.system(size: 12, weight: .semibold))
