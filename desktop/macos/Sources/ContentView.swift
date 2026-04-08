@@ -13,19 +13,25 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             mainCard
-                .padding(0)
+                .padding(shadowPad)
 
             closeButton
-                .padding(.top, 14)
-                .padding(.leading, 14)
+                .padding(.top, shadowPad + 14)
+                .padding(.leading, shadowPad + 14)
 
             WindowConfigurator()
                 .frame(width: 0, height: 0)
         }
-        .frame(width: 520, height: 248)
+        .frame(width: cardW + shadowPad * 2, height: cardH + shadowPad * 2)
         .background(Color.clear)
+        .ignoresSafeArea()
         .onOpenURL { model.apply(url: $0) }
     }
+
+    // Card dimensions + transparent shadow gutter so the drop shadow isn't clipped
+    private let cardW: CGFloat = 520
+    private let cardH: CGFloat = 248
+    private let shadowPad: CGFloat = 24
 
     private var mainCard: some View {
         VStack(spacing: 14) {
@@ -127,7 +133,7 @@ struct ContentView: View {
 
     private var closeButton: some View {
         Button {
-            NSApp.keyWindow?.performClose(nil)
+            NSApp.keyWindow?.close()
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 12, weight: .bold))
@@ -235,17 +241,13 @@ private struct WindowConfigurator: NSViewRepresentable {
     }
 
     private func configure(window: NSWindow) {
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        // Fully borderless — no title bar, no traffic lights, no system chrome.
+        window.styleMask = [.borderless, .fullSizeContentView]
         window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
         window.isOpaque = false
-        window.hasShadow = true
-
-        // Keep native resize/move behavior, but hide default window chrome.
-        window.standardWindowButton(.closeButton)?.isHidden = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.hasShadow = false   // card draws its own shadow via SwiftUI
+        window.level = .floating   // stay above other windows like a recorder widget
     }
 }
 
