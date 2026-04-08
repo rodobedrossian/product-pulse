@@ -7,14 +7,6 @@ import ParticipantAudioRecorder from '../components/ParticipantAudioRecorder.jsx
 const API_URL = getApiBase() || 'http://localhost:3001'
 const RESEARCH_INTENT_MAX = 2000
 
-function SectionJump({ href, label }) {
-  return (
-    <a className="pp-test-jump" href={href}>
-      {label}
-    </a>
-  )
-}
-
 function pathnameFromUrl(url) {
   try {
     return new URL(url).pathname
@@ -404,6 +396,7 @@ export default function TestDetail() {
   const [importedFile, setImportedFile]   = useState(null)
   const [dropActive, setDropActive]       = useState(false)
   const fileInputRef                      = useRef(null)
+  const [activeSection, setActiveSection] = useState('define')
   const [recordingsByParticipant, setRecordingsByParticipant] = useState({})
   const [desktopMac, setDesktopMac] = useState(null)
   const [desktopWin, setDesktopWin] = useState(null)
@@ -506,6 +499,22 @@ export default function TestDetail() {
     }
   }, [id, test?.participants])
 
+  // IntersectionObserver for active section tracking
+  useEffect(() => {
+    const sectionIds = ['define', 'setup', 'run']
+    const observers = sectionIds.map((sec) => {
+      const el = document.getElementById(sec)
+      if (!el) return null
+      const o = new IntersectionObserver(
+        ([entry]) => { if (entry.isIntersecting) setActiveSection(sec) },
+        { rootMargin: '-40% 0px -55% 0px' }
+      )
+      o.observe(el)
+      return o
+    })
+    return () => observers.forEach((o) => o?.disconnect())
+  }, [test?.id])
+
   async function saveResearchIntent() {
     const next = intentDraft.slice(0, RESEARCH_INTENT_MAX)
     const prev = (test.research_intent ?? '').trim()
@@ -585,8 +594,6 @@ export default function TestDetail() {
       let urlPattern = pendingGoal.url
       try { urlPattern = new URL(pendingGoal.url).pathname } catch { /* keep */ }
 
-      // url_pattern='/' matches every URL — don't store it for click goals as it
-      // provides zero page filtering and caused false-positive completions.
       const clickUrlPattern = urlPattern === '/' ? '' : urlPattern
 
       const goal_event =
@@ -595,14 +602,12 @@ export default function TestDetail() {
           : { type: 'click', selector: pendingGoal.selector, url_pattern: clickUrlPattern }
 
       if (pendingGoal.stepId) {
-        // Scenario: save to specific step
         const updated = await apiFetch(`/api/tests/${id}/steps/${pendingGoal.stepId}`, {
           method: 'PATCH',
           body: JSON.stringify({ goal_event })
         })
         setSteps((prev) => prev.map((s) => s.id === pendingGoal.stepId ? { ...s, goal_event: updated.goal_event } : s))
       } else {
-        // Single-goal test
         await apiFetch(`/api/tests/${id}`, {
           method: 'PATCH',
           body: JSON.stringify({ goal_event })
@@ -654,7 +659,6 @@ export default function TestDetail() {
   function handleStepDelete(deletedId) {
     setSteps((prev) => {
       const filtered = prev.filter((s) => s.id !== deletedId)
-      // Re-number order_index locally
       return filtered.map((s, i) => ({ ...s, order_index: i + 1 }))
     })
   }
@@ -676,13 +680,6 @@ export default function TestDetail() {
     !!ge?.type &&
     (!!ge.selector || (!!ge.url_pattern && String(ge.url_pattern).length > 0))
 
-  const hbClass =
-    heartbeat?.active
-      ? 'pp-heartbeat-card pp-heartbeat-card--active'
-      : heartbeat && !heartbeat.active
-        ? 'pp-heartbeat-card pp-heartbeat-card--warn'
-        : 'pp-heartbeat-card'
-
   const hasIntent = String(test.research_intent || '').trim().length > 0
   const hasContext = String(test.context || '').trim().length > 0
   const hasSnippetLive = !!heartbeat?.active
@@ -690,7 +687,6 @@ export default function TestDetail() {
   const hasScenarioSteps = !isScenario || steps.length > 0
   const hasScenarioGoals = !isScenario || steps.every(stepHasDefinedGoal)
   const hasSingleGoalReady = isScenario || isObservational || hasGoal
-  const isSetupReady = hasSnippetLive && hasParticipants && hasScenarioSteps && hasScenarioGoals && hasSingleGoalReady
 
   const nextAction = (() => {
     if (!hasIntent) return 'Add your research question'
@@ -704,10 +700,12 @@ export default function TestDetail() {
   })()
 
   return (
-    <div className="pp-page pp-stack">
-      <div>
+    <div className="pp-page">
+
+      {/* ─── Page header ───────────────────────────────────────────────── */}
+      <div className="pp-notion-page-header">
         <Link to="/" className="pp-back-link">← All tests</Link>
-        <div className="pp-page-head" style={{ marginBottom: '1.25rem' }}>
+        <div className="pp-page-head" style={{ marginBottom: 0, marginTop: '0.5rem' }}>
           <div style={{ minWidth: 0 }}>
             <div className="pp-inline" style={{ gap: '0.5rem', marginBottom: '0.2rem' }}>
               <h1 className="pp-page-title" style={{ margin: 0 }}>{test.name}</h1>
@@ -739,515 +737,462 @@ export default function TestDetail() {
             </Link>
           </div>
         </div>
-        <div className="pp-test-toolbar">
-          <div className="pp-test-jumps" aria-label="Jump to section">
-            <SectionJump href="#setup" label="Setup" />
-            {isObservational ? <SectionJump href="#sessions" label="Sessions" /> : <SectionJump href="#participants" label="Participants" />}
-            <SectionJump href="#instrumentation" label="Run" />
-            <SectionJump href={`/tests/${id}/results`} label="Results" />
-          </div>
-          <div className="pp-test-next">
-            <span className="pp-kicker" style={{ marginBottom: 0 }}>Next best action</span>
-            <strong>{nextAction}</strong>
-          </div>
-        </div>
       </div>
 
-      <section className="pp-card pp-test-checklist-card" id="setup">
-        <div className="pp-inline" style={{ justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-          <h2 className="pp-section-title" style={{ margin: 0 }}>Setup progress</h2>
-          <span className={`badge ${isSetupReady ? 'green' : 'amber'}`}>{isSetupReady ? 'Ready to run' : 'In setup'}</span>
-        </div>
-        <div className="pp-test-checklist">
-          <div className={`pp-test-checkitem ${hasIntent ? 'is-done' : ''}`}>Research question</div>
-          <div className={`pp-test-checkitem ${hasContext ? 'is-done' : ''}`}>Test context</div>
-          {!isObservational && (
-            <div className={`pp-test-checkitem ${hasParticipants ? 'is-done' : ''}`}>Participants</div>
-          )}
-          {!isScenario && !isObservational && (
-            <div className={`pp-test-checkitem ${hasSingleGoalReady ? 'is-done' : ''}`}>Success goal</div>
-          )}
-          {isScenario && (
-            <>
-              <div className={`pp-test-checkitem ${hasScenarioSteps ? 'is-done' : ''}`}>Script steps</div>
-              <div className={`pp-test-checkitem ${hasScenarioGoals ? 'is-done' : ''}`}>Step goals</div>
-            </>
-          )}
-          <div className={`pp-test-checkitem ${hasSnippetLive ? 'is-done' : ''}`}>Snippet receiving events</div>
-          {isObservational && (
-            <div className={`pp-test-checkitem ${hasParticipants ? 'is-done' : ''}`}>Sessions collected</div>
-          )}
-        </div>
-      </section>
+      {/* ─── Two-column Notion layout ───────────────────────────────────── */}
+      <div className="pp-notion-layout">
 
-      {!isScenario && !isObservational && (
-        <>
-          {!String(test.research_intent || '').trim() && (
-            <section className="pp-banner pp-banner--info" style={{ marginBottom: '1rem' }}>
-              <p className="pp-banner-title" style={{ marginBottom: '0.35rem' }}>What are you trying to learn?</p>
-              <p className="pp-muted" style={{ margin: 0, fontSize: '0.875rem', lineHeight: 1.5 }}>
-                Add a research question or hypothesis so results stay interpretable when you compare runs.
-              </p>
-            </section>
-          )}
-          <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
-            <label className="pp-step-field-label" style={{ display: 'block', marginBottom: 0 }}>
-              <span>What you&apos;re testing</span>
-              <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem', display: 'block', marginTop: '0.2rem' }}>
-                Research question or hypothesis — what this test should answer (separate from the technical goal).
-              </span>
-              <textarea
-                className="pp-step-textarea"
-                placeholder='e.g. "Can users find checkout without scanning the whole page?" or "We believe the new CTA increases completions."'
-                rows={3}
-                maxLength={RESEARCH_INTENT_MAX}
-                value={intentDraft}
-                onChange={(e) => setIntentDraft(e.target.value.slice(0, RESEARCH_INTENT_MAX))}
-                onBlur={saveResearchIntent}
-                disabled={savingIntent}
-                style={{ marginTop: '0.5rem' }}
-              />
-              <span className="pp-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.35rem' }}>
-                {intentDraft.length}/{RESEARCH_INTENT_MAX}{savingIntent ? ' · Saving…' : ''}
-              </span>
-            </label>
-          </section>
-        </>
-      )}
+        {/* Sidebar */}
+        <aside className="pp-notion-sidebar">
+          <nav className="pp-notion-nav" aria-label="Test sections">
+            {[
+              {
+                sid: 'define',
+                label: 'Define',
+                done: hasIntent && hasContext,
+                partial: hasIntent || hasContext,
+              },
+              {
+                sid: 'setup',
+                label: 'Setup',
+                done: hasSnippetLive && hasScenarioSteps && hasScenarioGoals && hasSingleGoalReady,
+                partial: hasSnippetLive || hasScenarioSteps,
+              },
+              {
+                sid: 'run',
+                label: 'Run',
+                done: hasParticipants,
+                partial: false,
+              },
+            ].map(({ sid, label, done, partial }) => (
+              <a
+                key={sid}
+                href={`#${sid}`}
+                className={`pp-notion-nav-item${activeSection === sid ? ' is-active' : ''}`}
+              >
+                <span className={`pp-nav-dot${done ? ' is-done' : partial ? ' is-partial' : ''}`} />
+                {label}
+              </a>
+            ))}
+            <a href={`/tests/${id}/results`} className="pp-notion-nav-item">
+              <span className="pp-nav-dot pp-nav-dot--review" />
+              Review
+            </a>
+          </nav>
 
-      {/* ─── Test context ────────────────────────────────────────────────── */}
-      <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
-
-        {/* Card header */}
-        <div className="pp-inline" style={{ justifyContent: 'space-between', marginBottom: '0.65rem' }}>
-          <div>
-            <h2 className="pp-section-title" style={{ margin: 0 }}>Test context</h2>
-            <span className="pp-muted" style={{ fontSize: '0.8125rem', display: 'block', marginTop: '0.2rem' }}>
-              Background the AI uses when generating reports from sessions, replays, and recordings. Optional.
+          <div className="pp-notion-next-action">
+            <span className="pp-kicker" style={{ fontSize: '0.6875rem', marginBottom: '0.3rem', display: 'block' }}>
+              Next
+            </span>
+            <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--color-text)', lineHeight: 1.4 }}>
+              {nextAction}
             </span>
           </div>
-          {importedFile && (
-            <div className="pp-inline" style={{ gap: '0.4rem', flexShrink: 0, alignSelf: 'flex-start' }}>
-              <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>📄 {importedFile.name}</span>
-              <button
-                type="button"
-                className="pp-btn-sm"
-                onClick={() => { setImportedFile(null); setContextDraft('') }}
-              >
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
+        </aside>
 
-        {/* Empty state */}
-        {!contextDraft.trim() && !importedFile && (
-          <div style={{
-            textAlign: 'center',
-            padding: '1.5rem 1rem',
-            border: '1.5px dashed var(--color-border-strong)',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--color-bg)',
-            marginBottom: '0.75rem',
-          }}>
-            <div style={{ fontSize: '1.75rem', lineHeight: 1, marginBottom: '0.5rem' }}>📋</div>
-            <p style={{ margin: '0 0 0.2rem', fontWeight: 600, color: 'var(--color-text)', fontSize: '0.9375rem' }}>
-              No context yet
-            </p>
-            <p className="pp-muted" style={{ margin: 0, fontSize: '0.8125rem' }}>
-              Write Markdown below or import a file — the AI uses this when summarising your sessions.
-            </p>
-          </div>
-        )}
+        {/* Main content */}
+        <main className="pp-notion-main">
 
-        {/* Textarea */}
-        <textarea
-          className="pp-step-textarea pp-context-textarea"
-          placeholder={"# Test context\n\nDescribe the product, who the participants are, what you're validating, and any relevant background.\n\nMarkdown is supported."}
-          rows={10}
-          value={contextDraft}
-          onChange={(e) => setContextDraft(e.target.value)}
-          onBlur={saveTestContext}
-          disabled={savingContext}
-          style={{ marginBottom: '0.5rem' }}
-        />
+          {/* ── DEFINE ─────────────────────────────────────────────────── */}
+          <section id="define" className="pp-notion-section">
+            <div className="pp-notion-section-label">Define</div>
 
-        {/* Footer: char count + save status + drop zone */}
-        <div className="pp-inline" style={{ justifyContent: 'space-between' }}>
-          <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
-            {contextDraft.length.toLocaleString()} chars
-            {contextDraft.length >= 5000 && (
-              <span style={{ color: 'var(--color-warn)', marginLeft: '0.35rem' }}>· Getting long</span>
-            )}
-            {savingContext && <span style={{ marginLeft: '0.35rem' }}>· Saving…</span>}
-            {savedContext && !savingContext && (
-              <span style={{ color: 'var(--color-success)', marginLeft: '0.35rem' }}>· Saved</span>
-            )}
-          </span>
-
-          {/* File import drop zone */}
-          <div
-            onDrop={handleContextDrop}
-            onDragOver={(e) => { e.preventDefault(); setDropActive(true) }}
-            onDragLeave={() => setDropActive(false)}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.3rem 0.65rem',
-              border: `1px dashed ${dropActive ? 'var(--color-accent)' : 'var(--color-border-strong)'}`,
-              borderRadius: 'var(--radius-sm)',
-              background: dropActive ? 'var(--color-info-bg)' : 'transparent',
-              cursor: 'pointer',
-              fontSize: '0.8125rem',
-              color: 'var(--color-text-secondary)',
-              transition: 'border-color 0.15s, background 0.15s',
-              userSelect: 'none',
-            }}
-          >
-            <span>↑</span>
-            <span>Import .md / .txt / .docx</span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".md,.txt,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) handleContextFile(f)
-                e.target.value = ''
-              }}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Pending goal banner */}
-      {pendingGoal && (
-        <section className="pp-banner pp-banner--info">
-          <p className="pp-banner-title">
-            Goal captured{pendingGoal.stepId ? ` for Step ${steps.find(s => s.id === pendingGoal.stepId)?.order_index ?? ''}` : ''}
-          </p>
-          <div className="pp-muted" style={{ marginBottom: '0.35rem', fontSize: '0.8125rem' }}>
-            <span>Type: </span>
-            <strong style={{ color: 'var(--color-text)' }}>
-              {pendingGoal.goalKind === 'url' ? 'URL / page reached' : 'Click element'}
-            </strong>
-          </div>
-          {pendingGoal.goalKind === 'click' && (
-            <div className="pp-muted" style={{ marginBottom: '0.25rem', fontSize: '0.8125rem' }}>
-              <span>Element: </span>
-              <code>{pendingGoal.selector || '(no selector)'}</code>
-            </div>
-          )}
-          <div className="pp-muted" style={{ marginBottom: '0.85rem', fontSize: '0.8125rem' }}>
-            <span>{pendingGoal.goalKind === 'url' ? 'URL match (path): ' : 'Page: '}</span>
-            <code>
-              {pendingGoal.goalKind === 'url' ? pathnameFromUrl(pendingGoal.url) : pendingGoal.url}
-            </code>
-          </div>
-          <div className="pp-inline">
-            <button type="button" className="primary pp-btn-sm" disabled={savingGoal} onClick={saveGoal}>
-              {savingGoal ? 'Saving…' : 'Save as goal'}
-            </button>
-            <button type="button" className="pp-btn-sm" onClick={() => setPendingGoal(null)}>
-              Discard
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* Single-goal display */}
-      {!isScenario && !isObservational && hasGoal && !pendingGoal && (
-        <section className="pp-banner pp-banner--success">
-          <div className="pp-inline" style={{ justifyContent: 'space-between', width: '100%' }}>
-            <div style={{ fontSize: '0.875rem', lineHeight: 1.5 }}>
-              <span style={{ fontWeight: 700, color: 'var(--color-success)', marginRight: '0.5rem' }}>
-                Goal
-              </span>
-              {test.goal_event.type === 'url_change' ? (
-                <>
-                  Reach URL containing <code>{test.goal_event.url_pattern}</code>
-                  <span className="pp-muted"> (navigation / SPA route)</span>
-                </>
-              ) : (
-                <>
-                  Click <code>{test.goal_event.selector}</code>
-                  {test.goal_event.url_pattern && (
-                    <span className="pp-muted"> on page <code>{test.goal_event.url_pattern}</code></span>
-                  )}
-                </>
-              )}
-            </div>
-            <button type="button" className="pp-btn-sm" onClick={() => openGoalPicker()}>
-              Redefine
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* Heartbeat */}
-      <section className={hbClass} id="instrumentation">
-        <div className="pp-heartbeat">
-          <div className="pp-inline">
-            <span className="pp-heartbeat-label">Snippet status</span>
-            {heartbeat ? (
-              <HeartbeatDot active={heartbeat.active} secondsAgo={heartbeat.seconds_ago} />
-            ) : (
-              <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>Checking…</span>
-            )}
-          </div>
-          <span className="pp-muted" style={{ fontSize: '0.75rem' }}>Polls every 5s</span>
-        </div>
-      </section>
-
-      {/* Scenario: Steps section */}
-      {isScenario && (
-        <section className="pp-card">
-          <div className="pp-inline" style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <h2 className="pp-section-title" style={{ margin: 0 }}>
-              Steps ({steps.length})
-            </h2>
-          </div>
-          {steps.length === 0 && (
-            <p className="pp-muted" style={{ margin: '0 0 1rem' }}>
-              No steps yet. Add your first task below.
-            </p>
-          )}
-          <div className="pp-steps-list">
-            {steps.map((step) => (
-              <StepCard
-                key={step.id}
-                step={step}
-                prototypeUrl={test.prototype_url}
-                testId={id}
-                onUpdate={handleStepUpdate}
-                onDelete={handleStepDelete}
-                onPickGoal={openGoalPicker}
-              />
-            ))}
-          </div>
-          <button
-            type="button"
-            className="pp-btn-sm"
-            style={{ marginTop: steps.length > 0 ? '0.75rem' : 0 }}
-            disabled={addingStep}
-            onClick={handleAddStep}
-          >
-            {addingStep ? 'Adding…' : '+ Add step'}
-          </button>
-        </section>
-      )}
-
-      {/* Embed snippet */}
-      <section className="pp-card">
-        <h2 className="pp-section-title">Embed snippet</h2>
-        <p className="pp-muted" style={{ margin: '0 0 1rem' }}>
-          Paste into the <code>&lt;head&gt;</code> of your prototype. API URL and test ID are already baked in.
-        </p>
-        <div style={{ marginBottom: '1rem' }}>
-          <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: '0.4rem' }}>
-            Single tag — recommended
-          </div>
-          <pre>{singleTag}</pre>
-          <div className="pp-inline" style={{ marginTop: '0.5rem' }}>
-            <CopyButton text={singleTag} label="Copy tag" />
-            {test.prototype_url && (
-              <CopyButton
-                text={buildAiPrompt(singleTag, test.name, test.prototype_url)}
-                label="✦ Copy AI prompt"
-                className="pp-btn-sm pp-btn-ai"
-              />
-            )}
-            <a href={snippetSrc} target="_blank" rel="noreferrer" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-              Preview JS file ↗
-            </a>
-          </div>
-          <p className="pp-muted" style={{ margin: '0.5rem 0 0', fontSize: '0.75rem' }}>
-            The AI prompt includes the tag and step-by-step instructions — paste it straight into Cursor, Claude, or ChatGPT.
-          </p>
-        </div>
-        <details className="pp-details pp-muted">
-          <summary>Generic snippet (two tags, works with any test)</summary>
-          <pre style={{ marginTop: '0.75rem' }}>{twoTagVersion}</pre>
-          <div style={{ marginTop: '0.5rem' }}>
-            <CopyButton text={twoTagVersion} label="Copy" />
-          </div>
-        </details>
-      </section>
-
-      {/* Observational: research intent + sessions list */}
-      {isObservational && (
-        <>
-          <section className="pp-card" style={{ marginBottom: '1.25rem' }} id="sessions">
-            <label className="pp-step-field-label" style={{ display: 'block', marginBottom: 0 }}>
-              <span>What you&apos;re trying to learn</span>
-              <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem', display: 'block', marginTop: '0.2rem' }}>
-                Hypothesis or question — what this observation should answer.
-              </span>
+            {/* Research question */}
+            <div className="pp-notion-field">
+              <div className="pp-notion-field-label">Research question</div>
+              <div className="pp-notion-field-hint">
+                {isObservational
+                  ? 'Hypothesis or question — what you want this observation to answer.'
+                  : 'What you\'re testing — the question or hypothesis this test should answer.'}
+              </div>
               <textarea
-                className="pp-step-textarea"
-                placeholder='e.g. "Where do visitors drop off before converting?" or "We believe most traffic comes from referrals."'
+                className="pp-notion-textarea"
+                placeholder={
+                  isObservational
+                    ? 'e.g. "Where do visitors drop off before converting?"'
+                    : 'e.g. "Can users find checkout without scanning the whole page?"'
+                }
                 rows={3}
                 maxLength={RESEARCH_INTENT_MAX}
                 value={intentDraft}
                 onChange={(e) => setIntentDraft(e.target.value.slice(0, RESEARCH_INTENT_MAX))}
                 onBlur={saveResearchIntent}
                 disabled={savingIntent}
-                style={{ marginTop: '0.5rem' }}
               />
-              <span className="pp-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: '0.35rem' }}>
-                {intentDraft.length}/{RESEARCH_INTENT_MAX}{savingIntent ? ' · Saving…' : ''}
-              </span>
-            </label>
+              <div className="pp-notion-saving">
+                {intentDraft.length}/{RESEARCH_INTENT_MAX}
+                {savingIntent && ' · Saving…'}
+              </div>
+            </div>
+
+            {/* Test context */}
+            <div className="pp-notion-field">
+              <div className="pp-notion-field-label">
+                Test context{' '}
+                <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: '0.75rem' }}>
+                  · AI report context
+                </span>
+              </div>
+              <div className="pp-notion-field-hint">
+                Background the AI uses when generating reports. Describe the product, participants, and what you're validating. Markdown supported.
+              </div>
+
+              {importedFile && (
+                <div className="pp-inline" style={{ gap: '0.4rem', marginBottom: '0.4rem' }}>
+                  <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>📄 {importedFile.name}</span>
+                  <button
+                    type="button"
+                    className="pp-btn-sm"
+                    onClick={() => { setImportedFile(null); setContextDraft('') }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              <textarea
+                className="pp-notion-textarea pp-context-textarea"
+                placeholder={"# Test context\n\nDescribe the product, who the participants are, what you're validating, and any relevant background.\n\nMarkdown is supported."}
+                rows={8}
+                value={contextDraft}
+                onChange={(e) => setContextDraft(e.target.value)}
+                onBlur={saveTestContext}
+                disabled={savingContext}
+              />
+
+              <div className="pp-inline" style={{ justifyContent: 'space-between', marginTop: '0.4rem' }}>
+                <div className="pp-notion-saving">
+                  {contextDraft.length.toLocaleString()} chars
+                  {contextDraft.length >= 5000 && (
+                    <span style={{ color: 'var(--color-warn)', marginLeft: '0.35rem' }}>· Getting long</span>
+                  )}
+                  {savingContext && <span style={{ marginLeft: '0.35rem' }}>· Saving…</span>}
+                  {savedContext && !savingContext && (
+                    <span style={{ color: 'var(--color-success)', marginLeft: '0.35rem' }}>· Saved</span>
+                  )}
+                </div>
+                <div
+                  className={`pp-notion-file-import${dropActive ? ' is-active' : ''}`}
+                  onDrop={handleContextDrop}
+                  onDragOver={(e) => { e.preventDefault(); setDropActive(true) }}
+                  onDragLeave={() => setDropActive(false)}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  ↑ Import .md / .txt / .docx
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".md,.txt,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    style={{ display: 'none' }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleContextFile(f); e.target.value = '' }}
+                  />
+                </div>
+              </div>
+            </div>
           </section>
 
-          <section className="pp-card" style={{ marginBottom: '1.25rem' }}>
-            <div className="pp-inline" style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-              <h2 className="pp-section-title" style={{ margin: 0 }}>
-                Sessions ({test.participants.length})
-                {test.tester_count != null && (
-                  <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem', marginLeft: '0.5rem' }}>
-                    · {test.tester_count} unique visitor{test.tester_count !== 1 ? 's' : ''}
-                  </span>
+          {/* ── SETUP ──────────────────────────────────────────────────── */}
+          <section id="setup" className="pp-notion-section">
+            <div className="pp-notion-section-label">Setup</div>
+
+            {/* Pending goal capture banner */}
+            {pendingGoal && (
+              <div className="pp-banner pp-banner--info" style={{ marginBottom: '1.25rem' }}>
+                <p className="pp-banner-title">
+                  Goal captured{pendingGoal.stepId ? ` for Step ${steps.find((s) => s.id === pendingGoal.stepId)?.order_index ?? ''}` : ''}
+                </p>
+                <div className="pp-muted" style={{ marginBottom: '0.35rem', fontSize: '0.8125rem' }}>
+                  <span>Type: </span>
+                  <strong style={{ color: 'var(--color-text)' }}>
+                    {pendingGoal.goalKind === 'url' ? 'URL / page reached' : 'Click element'}
+                  </strong>
+                </div>
+                {pendingGoal.goalKind === 'click' && (
+                  <div className="pp-muted" style={{ marginBottom: '0.25rem', fontSize: '0.8125rem' }}>
+                    <span>Element: </span><code>{pendingGoal.selector || '(no selector)'}</code>
+                  </div>
                 )}
-              </h2>
+                <div className="pp-muted" style={{ marginBottom: '0.85rem', fontSize: '0.8125rem' }}>
+                  <span>{pendingGoal.goalKind === 'url' ? 'URL match (path): ' : 'Page: '}</span>
+                  <code>{pendingGoal.goalKind === 'url' ? pathnameFromUrl(pendingGoal.url) : pendingGoal.url}</code>
+                </div>
+                <div className="pp-inline">
+                  <button type="button" className="primary pp-btn-sm" disabled={savingGoal} onClick={saveGoal}>
+                    {savingGoal ? 'Saving…' : 'Save as goal'}
+                  </button>
+                  <button type="button" className="pp-btn-sm" onClick={() => setPendingGoal(null)}>Discard</button>
+                </div>
+              </div>
+            )}
+
+            {/* Single-goal display */}
+            {!isScenario && !isObservational && hasGoal && !pendingGoal && (
+              <div className="pp-notion-field" style={{ marginBottom: '1.25rem' }}>
+                <div className="pp-notion-field-label">Success goal</div>
+                <div className="pp-banner pp-banner--success" style={{ margin: 0 }}>
+                  <div className="pp-inline" style={{ justifyContent: 'space-between', width: '100%' }}>
+                    <div style={{ fontSize: '0.875rem', lineHeight: 1.5 }}>
+                      <span style={{ fontWeight: 700, color: 'var(--color-success)', marginRight: '0.5rem' }}>✓</span>
+                      {test.goal_event.type === 'url_change' ? (
+                        <>
+                          Reach URL containing <code>{test.goal_event.url_pattern}</code>
+                          <span className="pp-muted"> (navigation / SPA route)</span>
+                        </>
+                      ) : (
+                        <>
+                          Click <code>{test.goal_event.selector}</code>
+                          {test.goal_event.url_pattern && (
+                            <span className="pp-muted"> on page <code>{test.goal_event.url_pattern}</code></span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <button type="button" className="pp-btn-sm" onClick={() => openGoalPicker()}>Redefine</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Scenario: script steps */}
+            {isScenario && (
+              <div className="pp-notion-field">
+                <div className="pp-notion-field-label">
+                  Script steps{' '}
+                  <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem' }}>({steps.length})</span>
+                </div>
+                {steps.length === 0 && (
+                  <p className="pp-muted" style={{ margin: '0 0 0.75rem', fontSize: '0.875rem' }}>
+                    No steps yet. Add your first task below.
+                  </p>
+                )}
+                <div className="pp-steps-list" style={{ marginBottom: '0.5rem' }}>
+                  {steps.map((step) => (
+                    <StepCard
+                      key={step.id}
+                      step={step}
+                      prototypeUrl={test.prototype_url}
+                      testId={id}
+                      onUpdate={handleStepUpdate}
+                      onDelete={handleStepDelete}
+                      onPickGoal={openGoalPicker}
+                    />
+                  ))}
+                </div>
+                <button type="button" className="pp-btn-sm" disabled={addingStep} onClick={handleAddStep}>
+                  {addingStep ? 'Adding…' : '+ Add step'}
+                </button>
+              </div>
+            )}
+
+            {/* Snippet embed + heartbeat */}
+            <div className="pp-notion-field">
+              <div className="pp-notion-field-label">
+                Snippet
+                <span style={{ marginLeft: '0.75rem', verticalAlign: 'middle' }}>
+                  {heartbeat ? (
+                    <HeartbeatDot active={heartbeat.active} secondsAgo={heartbeat.seconds_ago} />
+                  ) : (
+                    <span className="pp-muted" style={{ fontSize: '0.8125rem' }}>Checking…</span>
+                  )}
+                </span>
+              </div>
+              <div className="pp-notion-field-hint">
+                Paste into the <code>&lt;head&gt;</code> of your prototype. API URL and test ID are already baked in.
+              </div>
+
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Single tag — recommended
+                </div>
+                <pre style={{ margin: 0 }}>{singleTag}</pre>
+                <div className="pp-inline" style={{ marginTop: '0.5rem', gap: '0.5rem' }}>
+                  <CopyButton text={singleTag} label="Copy tag" />
+                  {test.prototype_url && (
+                    <CopyButton
+                      text={buildAiPrompt(singleTag, test.name, test.prototype_url)}
+                      label="✦ Copy AI prompt"
+                      className="pp-btn-sm pp-btn-ai"
+                    />
+                  )}
+                  <a href={snippetSrc} target="_blank" rel="noreferrer" style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
+                    Preview JS ↗
+                  </a>
+                </div>
+                <p className="pp-muted" style={{ margin: '0.5rem 0 0', fontSize: '0.75rem' }}>
+                  The AI prompt includes the tag and step-by-step instructions — paste straight into Cursor, Claude, or ChatGPT.
+                </p>
+              </div>
+
+              <details className="pp-details pp-muted">
+                <summary>Generic snippet (two tags, works with any test)</summary>
+                <pre style={{ marginTop: '0.75rem' }}>{twoTagVersion}</pre>
+                <div style={{ marginTop: '0.5rem' }}>
+                  <CopyButton text={twoTagVersion} label="Copy" />
+                </div>
+              </details>
             </div>
-            {test.participants.length === 0 ? (
-              <p className="pp-muted" style={{ margin: 0 }}>
-                No sessions yet. Add the snippet to your prototype — sessions will appear here automatically as visitors arrive.
-              </p>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Date</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Device</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Browser</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Referrer</th>
-                      <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {test.participants.map((p, i) => {
-                      const date = new Date(p.created_at)
-                      const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-                      const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-                      const deviceIcon = p.device_type === 'mobile' ? '📱' : p.device_type === 'tablet' ? '📟' : '🖥'
-                      let referrerDisplay = '—'
-                      if (p.referrer) {
-                        try { referrerDisplay = new URL(p.referrer).hostname } catch { referrerDisplay = p.referrer }
-                      }
-                      return (
-                        <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                          <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
-                            <span style={{ fontWeight: 500 }}>{dateStr}</span>
-                            <span className="pp-muted" style={{ marginLeft: '0.35rem' }}>{timeStr}</span>
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem' }}>
-                            <span title={p.device_type || 'unknown'}>{deviceIcon}</span>
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
-                            {p.browser || <span className="pp-muted">—</span>}
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem' }}>
-                            {p.referrer ? (
-                              <a href={p.referrer} target="_blank" rel="noreferrer" style={{ fontSize: '0.8125rem' }} title={p.referrer}>
-                                {referrerDisplay}
-                              </a>
-                            ) : (
-                              <span className="pp-muted">Direct</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
-                            <Link to={`/tests/${id}/replay/${p.tid}`} style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-                              View replay ↗
-                            </Link>
-                          </td>
+          </section>
+
+          {/* ── RUN ────────────────────────────────────────────────────── */}
+          <section id="run" className="pp-notion-section">
+            <div className="pp-notion-section-label">Run</div>
+
+            {/* Observational: sessions table */}
+            {isObservational && (
+              <div className="pp-notion-field">
+                <div className="pp-notion-field-label">
+                  Sessions{' '}
+                  <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem' }}>
+                    ({test.participants.length})
+                    {test.tester_count != null && (
+                      <> · {test.tester_count} unique visitor{test.tester_count !== 1 ? 's' : ''}</>
+                    )}
+                  </span>
+                </div>
+                {test.participants.length === 0 ? (
+                  <p className="pp-muted" style={{ margin: 0, fontSize: '0.875rem' }}>
+                    No sessions yet. Add the snippet to your prototype — sessions appear here automatically as visitors arrive.
+                  </p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Date</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Device</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Browser</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Referrer</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}></th>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {test.participants.map((p) => {
+                          const date = new Date(p.created_at)
+                          const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                          const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                          const deviceIcon = p.device_type === 'mobile' ? '📱' : p.device_type === 'tablet' ? '📟' : '🖥'
+                          let referrerDisplay = '—'
+                          if (p.referrer) {
+                            try { referrerDisplay = new URL(p.referrer).hostname } catch { referrerDisplay = p.referrer }
+                          }
+                          return (
+                            <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                              <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontWeight: 500 }}>{dateStr}</span>
+                                <span className="pp-muted" style={{ marginLeft: '0.35rem' }}>{timeStr}</span>
+                              </td>
+                              <td style={{ padding: '0.6rem 0.75rem' }}>
+                                <span title={p.device_type || 'unknown'}>{deviceIcon}</span>
+                              </td>
+                              <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
+                                {p.browser || <span className="pp-muted">—</span>}
+                              </td>
+                              <td style={{ padding: '0.6rem 0.75rem' }}>
+                                {p.referrer ? (
+                                  <a href={p.referrer} target="_blank" rel="noreferrer" style={{ fontSize: '0.8125rem' }} title={p.referrer}>
+                                    {referrerDisplay}
+                                  </a>
+                                ) : (
+                                  <span className="pp-muted">Direct</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
+                                <Link to={`/tests/${id}/replay/${p.tid}`} style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
+                                  View replay ↗
+                                </Link>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Directed: participants */}
+            {!isObservational && (
+              <div className="pp-notion-field">
+                <div className="pp-notion-field-label">
+                  Participants{' '}
+                  <span className="pp-muted" style={{ fontWeight: 400, fontSize: '0.8125rem' }}>
+                    ({test.participants.length})
+                  </span>
+                </div>
+                <p className="pp-muted" style={{ fontSize: '0.8125rem', margin: '0 0 0.85rem', lineHeight: 1.45 }}>
+                  {desktopMac?.download_url || desktopWin?.download_url ? (
+                    <>
+                      <span style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                        Desktop meeting recorder — install once:{' '}
+                      </span>
+                      {desktopMac?.download_url && (
+                        <a href={desktopMac.download_url} rel="noreferrer">
+                          macOS ({desktopMac.version || 'latest'})
+                        </a>
+                      )}
+                      {desktopMac?.download_url && desktopWin?.download_url && ' · '}
+                      {desktopWin?.download_url && (
+                        <a href={desktopWin.download_url} rel="noreferrer">
+                          Windows ({desktopWin.version || 'latest'})
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      Record from the browser per participant, or use <strong>Open desktop app</strong> after installing
+                      the native recorder. Download links appear here when your API sets{' '}
+                      <code style={{ fontSize: '0.75rem' }}>DESKTOP_MAC_DOWNLOAD_URL</code> /{' '}
+                      <code style={{ fontSize: '0.75rem' }}>DESKTOP_WIN_DOWNLOAD_URL</code>.
+                    </>
+                  )}
+                </p>
+
+                <form className="pp-form-inline" onSubmit={handleAddParticipant} style={{ marginBottom: '0.85rem' }}>
+                  <input
+                    placeholder="Participant name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                  />
+                  <button type="submit" className="primary pp-btn-sm" disabled={adding}>
+                    {adding ? 'Adding…' : 'Add participant'}
+                  </button>
+                </form>
+
+                {test.participants.length === 0 ? (
+                  <p className="pp-muted" style={{ margin: 0 }}>No participants yet.</p>
+                ) : (
+                  <div>
+                    {test.participants.map((p) => (
+                      <div key={p.id} className="pp-participant-row">
+                        <div className="pp-participant-row-main">
+                          <span style={{ fontWeight: 600 }}>{p.name}</span>
+                          {buildParticipantLink(test.prototype_url, p.tid, id) ? (
+                            <div className="pp-link-row">
+                              <code>{buildParticipantLink(test.prototype_url, p.tid, id)}</code>
+                              <CopyButton text={buildParticipantLink(test.prototype_url, p.tid, id)} label="Copy link" />
+                            </div>
+                          ) : (
+                            <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
+                              Invalid prototype URL — update test prototype URL to generate participant links
+                            </span>
+                          )}
+                        </div>
+                        <ParticipantAudioRecorder
+                          testId={id}
+                          participant={p}
+                          recordings={recordingsByParticipant[p.id] || []}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </section>
-        </>
-      )}
 
-      {/* Directed tests: Participants */}
-      {!isObservational && (
-      <section className="pp-card" id="participants">
-        <h2 className="pp-section-title">Participants ({test.participants.length})</h2>
-        <p className="pp-muted" style={{ fontSize: '0.8125rem', margin: '0 0 0.85rem', lineHeight: 1.45 }}>
-          {desktopMac?.download_url || desktopWin?.download_url ? (
-            <>
-              <span style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                Desktop meeting recorder — install once:{' '}
-              </span>
-              {desktopMac?.download_url && (
-                <a href={desktopMac.download_url} rel="noreferrer">
-                  macOS ({desktopMac.version || 'latest'})
-                </a>
-              )}
-              {desktopMac?.download_url && desktopWin?.download_url && ' · '}
-              {desktopWin?.download_url && (
-                <a href={desktopWin.download_url} rel="noreferrer">
-                  Windows ({desktopWin.version || 'latest'})
-                </a>
-              )}
-            </>
-          ) : (
-            <>
-              Record from the browser per participant, or use <strong>Open desktop app</strong> after installing
-              the native recorder. Download links appear here when your API sets{' '}
-              <code style={{ fontSize: '0.75rem' }}>DESKTOP_MAC_DOWNLOAD_URL</code> /{' '}
-              <code style={{ fontSize: '0.75rem' }}>DESKTOP_WIN_DOWNLOAD_URL</code>.
-            </>
-          )}
-        </p>
-        <form className="pp-form-inline" onSubmit={handleAddParticipant}>
-          <input
-            placeholder="Participant name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <button type="submit" className="primary pp-btn-sm" disabled={adding}>
-            {adding ? 'Adding…' : 'Add participant'}
-          </button>
-        </form>
-        {test.participants.length === 0 ? (
-          <p className="pp-muted" style={{ margin: 0 }}>No participants yet.</p>
-        ) : (
-          <div>
-            {test.participants.map((p) => (
-              <div key={p.id} className="pp-participant-row">
-                <div className="pp-participant-row-main">
-                  <span style={{ fontWeight: 600 }}>{p.name}</span>
-                  {buildParticipantLink(test.prototype_url, p.tid, id) ? (
-                    <div className="pp-link-row">
-                      <code>{buildParticipantLink(test.prototype_url, p.tid, id)}</code>
-                      <CopyButton text={buildParticipantLink(test.prototype_url, p.tid, id)} label="Copy link" />
-                    </div>
-                  ) : (
-                    <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
-                      Invalid prototype URL — update test prototype URL to generate participant links
-                    </span>
-                  )}
-                </div>
-                <ParticipantAudioRecorder
-                  testId={id}
-                  participant={p}
-                  recordings={recordingsByParticipant[p.id] || []}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-      )}
+        </main>
+      </div>
 
       {showScript && (
         <ScriptModal
