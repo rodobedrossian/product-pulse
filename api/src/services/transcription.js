@@ -3,7 +3,7 @@
  * Called fire-and-forget after a recording is uploaded.
  * Stores result in the `transcripts` table with status tracking.
  */
-import OpenAI from 'openai'
+import OpenAI, { toFile } from 'openai'
 import adminDb from '../db-admin.js'
 
 const BUCKET = 'participant-recordings'
@@ -59,9 +59,11 @@ export async function transcribeRecording(recording) {
     const buffer = Buffer.from(await blob.arrayBuffer())
 
     // 4. Call Whisper (verbose_json → includes timestamp segments)
+    // Use openai's toFile() helper — avoids relying on Web API `File` which
+    // is not available as a global in all Node.js versions on Railway.
     const ext = audio_object_path.split('.').pop() || 'm4a'
     const filename = `audio.${ext}`
-    const file = new File([buffer], filename, { type: mime_type || 'audio/m4a' })
+    const file = await toFile(buffer, filename, { type: mime_type || 'audio/m4a' })
     const result = await getOpenAI().audio.transcriptions.create({
       file,
       model:           'whisper-1',
