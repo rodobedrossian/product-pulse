@@ -34,8 +34,9 @@ function renderHeatmap(canvas, points, radius) {
     const px = pt.x * W
     const py = pt.y * H
     const grad = oc.createRadialGradient(px, py, 0, px, py, radius)
-    grad.addColorStop(0,   'rgba(255,255,255,0.25)')
-    grad.addColorStop(0.4, 'rgba(255,255,255,0.12)')
+    grad.addColorStop(0,   'rgba(255,255,255,1)')
+    grad.addColorStop(0.3, 'rgba(255,255,255,0.5)')
+    grad.addColorStop(0.7, 'rgba(255,255,255,0.15)')
     grad.addColorStop(1,   'rgba(255,255,255,0)')
     oc.fillStyle = grad
     oc.beginPath()
@@ -47,13 +48,25 @@ function renderHeatmap(canvas, points, radius) {
   const imgData = oc.getImageData(0, 0, W, H)
   const data    = imgData.data
 
+  // Find the maximum intensity so we can normalize the full range.
+  // Without this, a sparse heatmap clusters at the bottom of the LUT
+  // and everything looks uniformly blue/transparent with no red hot spots.
+  let maxIntensity = 0
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] > maxIntensity) maxIntensity = data[i]
+  }
+  if (maxIntensity === 0) return  // nothing to draw
+
   // LUT: intensity (0–255) → [r, g, b, a]
   const lut = buildLut()
+  const scale = 255 / maxIntensity  // stretch hottest pixel to LUT[255] (red)
 
   for (let i = 0; i < data.length; i += 4) {
-    const intensity = data[i]   // red channel = brightness from 'lighter' blend
-    if (intensity === 0) { data[i + 3] = 0; continue }
-    const c = lut[Math.min(255, intensity * 4)] // amplify so mid-range lights up
+    const raw = data[i]   // red channel = brightness from 'lighter' blend
+    if (raw === 0) { data[i + 3] = 0; continue }
+    // Normalize then apply a mild power curve so mid-density areas show green/yellow
+    const normalized = Math.min(255, Math.round(Math.pow(raw * scale / 255, 0.6) * 255))
+    const c = lut[normalized]
     data[i]     = c[0]
     data[i + 1] = c[1]
     data[i + 2] = c[2]
