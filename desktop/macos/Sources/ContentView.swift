@@ -11,25 +11,19 @@ struct ContentView: View {
     private let subtext = Color.black.opacity(0.55)
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             mainCard
-                .padding(24)
-                .frame(width: 560, height: 340)
-                .background(Color.clear)
+                .padding(0)
 
-            VStack {
-                HStack {
-                    closeButton
-                    Spacer()
-                }
-                .padding(.top, 12)
-                .padding(.leading, 16)
-                Spacer()
-            }
+            closeButton
+                .padding(.top, 14)
+                .padding(.leading, 14)
 
             WindowConfigurator()
                 .frame(width: 0, height: 0)
         }
+        .frame(width: 520, height: 248)
+        .background(Color.clear)
         .onOpenURL { model.apply(url: $0) }
     }
 
