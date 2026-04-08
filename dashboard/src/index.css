@@ -1025,6 +1025,112 @@ details.pp-details[open] summary::before {
   height: 34px;
 }
 
+.pp-results-tabs {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  padding: 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+}
+
+.pp-results-tabs button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.pp-results-tabs button.is-active {
+  background: var(--color-surface-raised);
+  color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.pp-results-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.pp-results-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pp-results-filters label span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+}
+
+.pp-results-filters input,
+.pp-results-filters select {
+  height: 34px;
+}
+
+.pp-results-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.pp-mini-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.pp-mini-bar-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 160px) 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pp-mini-bar-label {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-mini-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.pp-mini-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+.pp-mini-bar-fill--alt {
+  background: var(--color-success);
+}
+
+.pp-mini-bar-fill--event {
+  background: #0f766e;
+}
+
+.pp-mini-bar-value {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
 .pp-loading {
   font-size: 0.9375rem;
   color: var(--color-muted);

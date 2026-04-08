@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
@@ -124,6 +124,389 @@ function StatCard({ label, value, highlight }) {
       <div className="pp-stat-label">{label}</div>
       <div className={valueClass}>{value}</div>
     </div>
+  )
+}
+
+function median(values) {
+  if (!values.length) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    : sorted[mid]
+}
+
+function ObservationalResults({ data, testId, navigate }) {
+  const [tab, setTab] = useState('overview')
+  const [sessionDevice, setSessionDevice] = useState('all')
+  const [sessionReplay, setSessionReplay] = useState('all')
+  const [sessionReferrer, setSessionReferrer] = useState('all')
+  const [eventType, setEventType] = useState('all')
+  const [eventUrl, setEventUrl] = useState('')
+  const [eventText, setEventText] = useState('')
+  const [eventTid, setEventTid] = useState('')
+  const [lightbox, setLightbox] = useState(null)
+
+  const sessions = data.results || []
+  const totalSessions = data.total_sessions ?? sessions.length
+  const uniqueVisitors = data.unique_testers ?? 0
+  const returningVisitors = data.returning_testers ?? 0
+  const replaySessions = sessions.filter((s) => s.has_replay).length
+  const replayCoverage = totalSessions > 0 ? Math.round((replaySessions / totalSessions) * 100) : 0
+  const avgEventsPerSession = totalSessions > 0
+    ? (sessions.reduce((sum, s) => sum + (s.event_count || 0), 0) / totalSessions).toFixed(1)
+    : '0.0'
+  const durationValues = sessions.map((s) => s.duration_ms).filter((v) => Number.isFinite(v) && v > 0)
+  const medianDurationMs = median(durationValues)
+
+  const sessionsByDay = useMemo(() => {
+    const map = {}
+    sessions.forEach((s) => {
+      const d = new Date(s.created_at)
+      if (Number.isNaN(d.getTime())) return
+      const key = d.toISOString().slice(0, 10)
+      map[key] = (map[key] || 0) + 1
+    })
+    return Object.entries(map)
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([date, count]) => ({ date, count }))
+  }, [sessions])
+
+  const maxSessionDay = Math.max(1, ...sessionsByDay.map((d) => d.count))
+
+  const referrers = (data.referrers || []).slice(0, 8)
+  const maxReferrerCount = Math.max(1, ...referrers.map((r) => r.count))
+
+  const allEvents = useMemo(() => {
+    const flat = []
+    sessions.forEach((s) => {
+      ;(s.events || []).forEach((e) => {
+        flat.push({
+          ...e,
+          tid: s.tid,
+          browser: s.browser,
+          device_type: s.device_type,
+          created_at: s.created_at
+        })
+      })
+    })
+    return flat.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+  }, [sessions])
+
+  const eventTypeCounts = useMemo(() => {
+    const map = {}
+    allEvents.forEach((e) => {
+      map[e.type] = (map[e.type] || 0) + 1
+    })
+    return Object.entries(map)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+  }, [allEvents])
+  const maxEventTypeCount = Math.max(1, ...eventTypeCounts.map((e) => e.count))
+
+  const sessionReferrerOptions = useMemo(() => {
+    const sources = new Set()
+    sessions.forEach((s) => {
+      let source = 'Direct'
+      if (s.referrer) {
+        try { source = new URL(s.referrer).hostname } catch { source = s.referrer }
+      }
+      sources.add(source)
+    })
+    return [...sources].sort((a, b) => a.localeCompare(b))
+  }, [sessions])
+
+  const filteredSessions = sessions.filter((s) => {
+    const device = s.device_type || 'unknown'
+    if (sessionDevice !== 'all' && device !== sessionDevice) return false
+    if (sessionReplay === 'with' && !s.has_replay) return false
+    if (sessionReplay === 'without' && s.has_replay) return false
+    let source = 'Direct'
+    if (s.referrer) {
+      try { source = new URL(s.referrer).hostname } catch { source = s.referrer }
+    }
+    if (sessionReferrer !== 'all' && source !== sessionReferrer) return false
+    return true
+  })
+
+  const filteredEvents = allEvents.filter((e) => {
+    if (eventType !== 'all' && e.type !== eventType) return false
+    if (eventTid.trim() && !String(e.tid || '').toLowerCase().includes(eventTid.trim().toLowerCase())) return false
+    if (eventUrl.trim() && !String(e.url || '').toLowerCase().includes(eventUrl.trim().toLowerCase())) return false
+    if (eventText.trim()) {
+      const text = String(e.metadata?.text || e.selector || '').toLowerCase()
+      if (!text.includes(eventText.trim().toLowerCase())) return false
+    }
+    return true
+  })
+
+  return (
+    <>
+      {lightbox && <ScreenshotLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      <div className="pp-results-tabs">
+        <button type="button" className={tab === 'overview' ? 'is-active' : ''} onClick={() => setTab('overview')}>Overview</button>
+        <button type="button" className={tab === 'sessions' ? 'is-active' : ''} onClick={() => setTab('sessions')}>Sessions</button>
+        <button type="button" className={tab === 'events' ? 'is-active' : ''} onClick={() => setTab('events')}>Events</button>
+      </div>
+
+      {tab === 'overview' && (
+        <>
+          <div className="pp-stat-grid">
+            <StatCard label="Sessions" value={totalSessions} />
+            <StatCard label="Unique visitors" value={uniqueVisitors} />
+            <StatCard label="Returning visitors" value={returningVisitors} />
+            <StatCard label="Replay coverage" value={`${replayCoverage}%`} highlight={replayCoverage >= 60 ? 'green' : replayCoverage >= 30 ? 'yellow' : 'red'} />
+          </div>
+
+          <div className="pp-stat-grid" style={{ marginTop: '-0.5rem' }}>
+            <StatCard label="Median session duration" value={formatMs(medianDurationMs)} />
+            <StatCard label="Avg events / session" value={avgEventsPerSession} />
+            <StatCard label="Total events" value={allEvents.length} />
+          </div>
+
+          <div className="pp-card" style={{ marginBottom: '1rem' }}>
+            <h2 className="pp-section-title" style={{ marginBottom: '0.75rem' }}>Sessions over time</h2>
+            {sessionsByDay.length === 0 ? (
+              <p className="pp-muted" style={{ margin: 0 }}>No sessions yet.</p>
+            ) : (
+              <div className="pp-mini-bars">
+                {sessionsByDay.map((d) => (
+                  <div key={d.date} className="pp-mini-bar-row">
+                    <span className="pp-mini-bar-label">{new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    <div className="pp-mini-bar-track">
+                      <div className="pp-mini-bar-fill" style={{ width: `${(d.count / maxSessionDay) * 100}%` }} />
+                    </div>
+                    <span className="pp-mini-bar-value">{d.count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="pp-results-chart-grid">
+            <div className="pp-card">
+              <h2 className="pp-section-title" style={{ marginBottom: '0.75rem' }}>Top referrers</h2>
+              {referrers.length === 0 ? (
+                <p className="pp-muted" style={{ margin: 0 }}>No referrer data yet.</p>
+              ) : (
+                <div className="pp-mini-bars">
+                  {referrers.map((r) => (
+                    <div key={r.source} className="pp-mini-bar-row">
+                      <span className="pp-mini-bar-label" title={r.source}>{r.source}</span>
+                      <div className="pp-mini-bar-track">
+                        <div className="pp-mini-bar-fill pp-mini-bar-fill--alt" style={{ width: `${(r.count / maxReferrerCount) * 100}%` }} />
+                      </div>
+                      <span className="pp-mini-bar-value">{r.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pp-card">
+              <h2 className="pp-section-title" style={{ marginBottom: '0.75rem' }}>Event type mix</h2>
+              {eventTypeCounts.length === 0 ? (
+                <p className="pp-muted" style={{ margin: 0 }}>No events yet.</p>
+              ) : (
+                <div className="pp-mini-bars">
+                  {eventTypeCounts.slice(0, 8).map((e) => (
+                    <div key={e.type} className="pp-mini-bar-row">
+                      <span className="pp-mini-bar-label">{e.type}</span>
+                      <div className="pp-mini-bar-track">
+                        <div className="pp-mini-bar-fill pp-mini-bar-fill--event" style={{ width: `${(e.count / maxEventTypeCount) * 100}%` }} />
+                      </div>
+                      <span className="pp-mini-bar-value">{e.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === 'sessions' && (
+        <>
+          <div className="pp-card" style={{ marginBottom: '1rem' }}>
+            <div className="pp-results-filters">
+              <label>
+                <span>Device</span>
+                <select value={sessionDevice} onChange={(e) => setSessionDevice(e.target.value)}>
+                  <option value="all">All</option>
+                  <option value="desktop">Desktop</option>
+                  <option value="mobile">Mobile</option>
+                  <option value="tablet">Tablet</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+              <label>
+                <span>Replay</span>
+                <select value={sessionReplay} onChange={(e) => setSessionReplay(e.target.value)}>
+                  <option value="all">All</option>
+                  <option value="with">With replay</option>
+                  <option value="without">Without replay</option>
+                </select>
+              </label>
+              <label>
+                <span>Referrer</span>
+                <select value={sessionReferrer} onChange={(e) => setSessionReferrer(e.target.value)}>
+                  <option value="all">All</option>
+                  {sessionReferrerOptions.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {filteredSessions.length === 0 ? (
+            <div className="pp-empty-state"><p>No sessions match these filters.</p></div>
+          ) : (
+            <div className="pp-card pp-table-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="pp-table-wrap" style={{ margin: 0, padding: 0 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Session</th>
+                      <th>Started</th>
+                      <th>Device</th>
+                      <th>Browser</th>
+                      <th>Referrer</th>
+                      <th>Duration</th>
+                      <th>Events</th>
+                      <th>Replay</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSessions.map((s) => {
+                      let ref = 'Direct'
+                      if (s.referrer) {
+                        try { ref = new URL(s.referrer).hostname } catch { ref = s.referrer }
+                      }
+                      return (
+                        <tr key={s.tid}>
+                          <td style={{ fontWeight: 600 }}><code>{String(s.tid || '').slice(0, 8)}</code></td>
+                          <td className="pp-muted">{new Date(s.created_at).toLocaleString()}</td>
+                          <td>{s.device_type || '—'}</td>
+                          <td>{s.browser || '—'}</td>
+                          <td title={s.referrer || ''}>{ref}</td>
+                          <td style={{ fontVariantNumeric: 'tabular-nums' }}>{formatMs(s.duration_ms)}</td>
+                          <td>{s.event_count}</td>
+                          <td>
+                            {s.has_replay ? (
+                              <button type="button" className="pp-btn-sm primary" onClick={() => navigate(`/tests/${testId}/replay/${s.tid}`)}>
+                                ▶ Watch replay
+                              </button>
+                            ) : (
+                              <span className="pp-muted" style={{ fontSize: '0.75rem' }}>No replay</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === 'events' && (
+        <>
+          <div className="pp-card" style={{ marginBottom: '1rem' }}>
+            <div className="pp-results-filters">
+              <label>
+                <span>Type</span>
+                <select value={eventType} onChange={(e) => setEventType(e.target.value)}>
+                  <option value="all">All</option>
+                  {eventTypeCounts.map((e) => <option key={e.type} value={e.type}>{e.type}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Session ID</span>
+                <input value={eventTid} onChange={(e) => setEventTid(e.target.value)} placeholder="tid…" />
+              </label>
+              <label>
+                <span>URL contains</span>
+                <input value={eventUrl} onChange={(e) => setEventUrl(e.target.value)} placeholder="/pricing" />
+              </label>
+              <label>
+                <span>Text / selector contains</span>
+                <input value={eventText} onChange={(e) => setEventText(e.target.value)} placeholder="signup" />
+              </label>
+            </div>
+          </div>
+
+          {filteredEvents.length === 0 ? (
+            <div className="pp-empty-state"><p>No events match these filters.</p></div>
+          ) : (
+            <div className="pp-card pp-table-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="pp-table-wrap" style={{ margin: 0, padding: 0 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Session</th>
+                      <th>Type</th>
+                      <th>Text / selector</th>
+                      <th>URL</th>
+                      <th style={{ width: 48 }}>View</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEvents.map((e) => {
+                      const hasScreenshot = !!e.screenshot_object_path
+                      const screenshotUrl = hasScreenshot ? `${API_BASE}/api/tests/${testId}/events/${e.id}/screenshot` : null
+                      return (
+                        <tr key={e.id}>
+                          <td className="pp-muted" style={{ whiteSpace: 'nowrap' }}>
+                            {new Date(e.timestamp).toLocaleString()}
+                          </td>
+                          <td><code>{String(e.tid || '').slice(0, 8)}</code></td>
+                          <td><code>{e.type}</code></td>
+                          <td style={{ maxWidth: 180 }}>
+                            {e.metadata?.text ? (
+                              <span title={e.metadata.text}>
+                                {e.metadata.text.length > 40 ? `${e.metadata.text.slice(0, 40)}…` : e.metadata.text}
+                              </span>
+                            ) : (
+                              <code style={{ fontSize: '0.75rem' }}>{e.selector || '—'}</code>
+                            )}
+                          </td>
+                          <td className="pp-muted" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
+                            {e.url || '—'}
+                          </td>
+                          <td>
+                            {hasScreenshot ? (
+                              <button
+                                type="button"
+                                className="pp-btn-icon"
+                                title="View screenshot"
+                                onClick={() => setLightbox(screenshotUrl)}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="2" y="3" width="12" height="10" rx="1.5" />
+                                  <circle cx="5.5" cy="6.5" r="1" />
+                                  <path d="M14 10l-3-3-5 5" />
+                                  <path d="M14 13H2l4-4" />
+                                </svg>
+                              </button>
+                            ) : (
+                              <span className="pp-muted" style={{ fontSize: '0.75rem' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
   )
 }
 
@@ -401,6 +784,7 @@ export default function TestResults() {
   if (!data) return null
 
   const isScenario = data.test_type === 'scenario'
+  const isObservational = data.test_type === 'observational'
   const researchIntent = data.research_intent?.trim()
 
   return (
@@ -412,7 +796,9 @@ export default function TestResults() {
           <p className="pp-muted" style={{ marginTop: '0.35rem' }}>
             {isScenario
               ? 'Step funnel, completion rates, and per-participant timelines.'
-              : 'Completion, time-to-goal, and full event timelines per participant.'}
+              : isObservational
+                ? 'Behavioral patterns, sessions, and event-level discovery.'
+                : 'Completion, time-to-goal, and full event timelines per participant.'}
           </p>
         </div>
       </div>
@@ -424,7 +810,13 @@ export default function TestResults() {
         </section>
       )}
 
-      {isScenario ? (
+      {isObservational ? (
+        <ObservationalResults
+          data={data}
+          testId={id}
+          navigate={navigate}
+        />
+      ) : isScenario ? (
         <ScenarioResults
           funnel={data.funnel}
           results={data.results}
