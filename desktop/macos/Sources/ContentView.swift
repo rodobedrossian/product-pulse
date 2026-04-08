@@ -267,94 +267,109 @@ private struct WindowConfigurator: NSViewRepresentable {
 
 // MARK: - Waveform
 
+// (oscillation Hz, phase 0…1) — prime-ish ratios keep bars from syncing up
+private let waveBarDNA: [(freq: Double, phase: Double)] = [
+    (1.90, 0.00), (2.65, 0.17), (3.20, 0.34), (1.75, 0.51),
+    (2.40, 0.12), (3.55, 0.69), (2.10, 0.28), (2.85, 0.45),
+    (1.60, 0.73), (3.30, 0.07), (2.55, 0.90), (1.85, 0.57)
+]
+private let waveMinH: CGFloat = 4
+private let waveMaxH: CGFloat = 46
+
+/// A single animated bar — extracted so the type-checker handles each piece separately.
+private struct WaveBar: View {
+    let index: Int
+    let t: Double       // current time (seconds)
+    let lv: CGFloat     // normalised audio level 0…1
+    let hot: Bool       // true when audio is active
+
+    var body: some View {
+        let dna  = waveBarDNA[index]
+        let wave = sin(t * dna.freq * 2 * .pi + dna.phase * 2 * .pi) * 0.5 + 0.5
+        let h: CGFloat = hot
+            ? waveMinH + CGFloat(wave) * (waveMaxH - waveMinH) * (0.25 + lv * 0.75)
+            : waveMinH + CGFloat(wave) * 6
+        Capsule()
+            .fill(barGradient(wave: wave, lv: lv))
+            .frame(width: 4, height: max(waveMinH, h))
+    }
+
+    private func barGradient(wave: Double, lv: CGFloat) -> LinearGradient {
+        let mix = lv * CGFloat(wave)
+        let lo  = Color(red: 0.18 - mix * 0.04, green: 0.46 + mix * 0.18, blue: 0.92)
+        let hi  = Color(red: 0.14 - mix * 0.02, green: 0.60 + mix * 0.12, blue: 1.00)
+        return LinearGradient(colors: [lo, hi], startPoint: .bottom, endPoint: .top)
+    }
+}
+
+/// Background pill — extracted to keep the outer body expression count low.
+private struct WaveBackground: View {
+    let hot: Bool
+
+    var body: some View {
+        let fill   = hot ? Color(red: 0.93, green: 0.96, blue: 1.0)
+                         : Color(red: 0.97, green: 0.98, blue: 1.0)
+        let stroke = hot ? Color(red: 0.22, green: 0.51, blue: 1.0).opacity(0.25)
+                         : Color.black.opacity(0.05)
+        let width: CGFloat = hot ? 1.5 : 1
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(fill)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(stroke, lineWidth: width)
+            )
+    }
+}
+
 /// Each bar oscillates at its own frequency/phase; amplitude is driven by the audio level.
 /// Uses TimelineView so motion is continuous — no discrete animation triggers needed.
 private struct RecordingLevelView: View {
     let level: Float
     let elapsed: String
 
-    // (oscillation Hz, phase 0…1) — prime-ish ratios keep bars from syncing up
-    private static let barDNA: [(freq: Double, phase: Double)] = [
-        (1.90, 0.00), (2.65, 0.17), (3.20, 0.34), (1.75, 0.51),
-        (2.40, 0.12), (3.55, 0.69), (2.10, 0.28), (2.85, 0.45),
-        (1.60, 0.73), (3.30, 0.07), (2.55, 0.90), (1.85, 0.57)
-    ]
-
-    private let minH: CGFloat =  4   // px at silence
-    private let maxH: CGFloat = 46   // px at full volume
-
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { ctx in
             let t   = ctx.date.timeIntervalSinceReferenceDate
             let lv  = CGFloat(max(0, level))
-            let hot = lv > 0.08   // distinguishes "audio present" from idle
-
-            HStack(spacing: 12) {
-                // ── Elapsed timer ────────────────────────────────────
-                HStack(spacing: 5) {
-                    // Pulsing red dot — clearly shows active capture
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 7, height: 7)
-                        .opacity(hot ? 1 : 0.35)
-                        .scaleEffect(hot ? 1 : 0.75)
-                        .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: hot)
-
-                    Text(elapsed)
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.black.opacity(0.75))
-                }
-                .frame(minWidth: 72, alignment: .leading)
-
-                // ── Animated bars ─────────────────────────────────────
-                HStack(alignment: .center, spacing: 3) {
-                    ForEach(0..<Self.barDNA.count, id: \.self) { i in
-                        let dna  = Self.barDNA[i]
-                        // Continuous sine in [0,1]
-                        let wave = (sin(t * dna.freq * 2 * .pi + dna.phase * 2 * .pi) * 0.5 + 0.5)
-                        // At silence: tiny 4–10 px ambient flutter
-                        // At full volume: full minH…maxH driven by level + wave
-                        let h: CGFloat = hot
-                            ? minH + wave * (maxH - minH) * (0.25 + lv * 0.75)
-                            : minH + wave * 6
-                        Capsule()
-                            .fill(barGradient(wave: wave, lv: lv))
-                            .frame(width: 4, height: max(minH, h))
-                    }
-                }
-                .frame(height: maxH + 6)
-
-                // ── Status label ──────────────────────────────────────
-                Text(hot ? "Audio detected" : "Listening…")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.black.opacity(0.45))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    // Background deepens slightly when audio is active
-                    .fill(hot
-                          ? Color(red: 0.93, green: 0.96, blue: 1.0)
-                          : Color(red: 0.97, green: 0.98, blue: 1.0))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(
-                                hot ? Color(red: 0.22, green: 0.51, blue: 1.0).opacity(0.25)
-                                    : Color.black.opacity(0.05),
-                                lineWidth: hot ? 1.5 : 1
-                            )
-                    )
-            )
+            let hot = lv > 0.08
+            waveRow(t: t, lv: lv, hot: hot)
         }
     }
 
-    /// Bars shift from steel-blue toward vivid cyan at peaks, giving depth without noise.
-    private func barGradient(wave: Double, lv: CGFloat) -> LinearGradient {
-        let t = lv * CGFloat(wave)
-        let lo = Color(red: 0.18 - t * 0.04, green: 0.46 + t * 0.18, blue: 0.92)
-        let hi = Color(red: 0.14 - t * 0.02, green: 0.60 + t * 0.12, blue: 1.00)
-        return LinearGradient(colors: [lo, hi], startPoint: .bottom, endPoint: .top)
+    // Extracted helper — breaks the closure into a named method the type-checker handles easily.
+    private func waveRow(t: Double, lv: CGFloat, hot: Bool) -> some View {
+        HStack(spacing: 12) {
+            timerLabel(hot: hot)
+
+            HStack(alignment: .center, spacing: 3) {
+                ForEach(0..<waveBarDNA.count, id: \.self) { i in
+                    WaveBar(index: i, t: t, lv: lv, hot: hot)
+                }
+            }
+            .frame(height: waveMaxH + 6)
+
+            Text(hot ? "Audio detected" : "Listening…")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.45))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(WaveBackground(hot: hot))
+    }
+
+    private func timerLabel(hot: Bool) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 7, height: 7)
+                .opacity(hot ? 1.0 : 0.35)
+                .scaleEffect(hot ? 1.0 : 0.75)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: hot)
+            Text(elapsed)
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Color.black.opacity(0.75))
+        }
+        .frame(minWidth: 72, alignment: .leading)
     }
 }
