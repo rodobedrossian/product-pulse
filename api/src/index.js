@@ -10,6 +10,7 @@ import screenshotRouter from './routes/event-screenshots.js'
 import teamsRouter from './routes/teams.js'
 import mcpTokensRouter from './routes/mcpTokens.js'
 import participantRecordingsRouter from './routes/participant-recordings.js'
+import transcriptsRouter from './routes/transcripts.js'
 import desktopRouter from './routes/desktop.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -50,6 +51,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }))
 app.use('/api/tests', testsRouter)
 app.use('/api/tests', participantsRouter)
 app.use('/api/tests', participantRecordingsRouter)
+app.use('/api/tests', transcriptsRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api', replayRouter)
 app.use('/api', screenshotRouter)

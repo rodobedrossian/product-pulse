@@ -8,6 +8,7 @@ import adminDb from '../db-admin.js'
 import { requireAuth } from '../middleware/auth.js'
 import { authenticateRecordingOrUser } from '../middleware/recordingAuth.js'
 import { mintRecordingToken, recordingTokenTtlSeconds } from '../lib/recordingJwt.js'
+import { transcribeRecording } from '../services/transcription.js'
 
 const router = Router()
 const BUCKET = 'participant-recordings'
@@ -187,6 +188,16 @@ router.post(
     }
 
     res.status(201).json(row)
+
+    // Fire-and-forget transcription — response already sent, so errors here only log
+    transcribeRecording({
+      id:                recordingId,
+      test_id:           testId,
+      tid:               participant.tid,
+      audio_object_path: objectPath,
+      mime_type:         mimeType,
+      byte_size:         file.buffer.length,
+    }).catch((err) => console.error('[transcription] unhandled error:', err))
   }
 )
 

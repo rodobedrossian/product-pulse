@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
@@ -154,6 +155,13 @@ export default function ParticipantAudioRecorder({ testId, participant, recordin
               >
                 <PlayIcon />
               </button>
+              <Link
+                to={`/tests/${testId}/participants/${participant.id}/transcript?recordingId=${r.id}`}
+                className="pp-transcript-link"
+                title="View transcript"
+              >
+                Transcript
+              </Link>
             </li>
           ))}
         </ul>
