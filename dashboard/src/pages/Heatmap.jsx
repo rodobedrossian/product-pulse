@@ -34,9 +34,8 @@ function renderHeatmap(canvas, points, radius) {
     const px = pt.x * W
     const py = pt.y * H
     const grad = oc.createRadialGradient(px, py, 0, px, py, radius)
-    grad.addColorStop(0,   'rgba(255,255,255,1)')
-    grad.addColorStop(0.3, 'rgba(255,255,255,0.5)')
-    grad.addColorStop(0.7, 'rgba(255,255,255,0.15)')
+    grad.addColorStop(0,   'rgba(255,255,255,0.08)')
+    grad.addColorStop(0.4, 'rgba(255,255,255,0.03)')
     grad.addColorStop(1,   'rgba(255,255,255,0)')
     oc.fillStyle = grad
     oc.beginPath()
@@ -64,8 +63,9 @@ function renderHeatmap(canvas, points, radius) {
   for (let i = 0; i < data.length; i += 4) {
     const raw = data[i]   // red channel = brightness from 'lighter' blend
     if (raw === 0) { data[i + 3] = 0; continue }
-    // Normalize then apply a mild power curve so mid-density areas show green/yellow
-    const normalized = Math.min(255, Math.round(Math.pow(raw * scale / 255, 0.6) * 255))
+    // Normalize then apply a power curve so mid-density areas show green/yellow
+    // Exponent < 1 boosts mid-range; 0.7 keeps good spread without over-compressing
+    const normalized = Math.min(255, Math.round(Math.pow(raw * scale / 255, 0.7) * 255))
     const c = lut[normalized]
     data[i]     = c[0]
     data[i + 1] = c[1]
