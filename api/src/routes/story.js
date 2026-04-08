@@ -12,7 +12,14 @@ function getOpenAI() {
 }
 
 const SCREENSHOT_BUCKET = 'event-screenshots'
-const SIGNED_URL_EXPIRES = 3600 // 1 hour
+const SIGNED_URL_EXPIRES = 3600
+
+// Events that carry no UX signal
+const NOISE_TYPES = new Set([
+  'mousemove', 'mousemove_batch', 'scroll', 'focus', 'blur',
+  'keypress', 'mouseenter', 'mouseleave', 'mousedown', 'mouseup',
+  'touchstart', 'touchend', 'touchmove', 'pointerdown', 'pointerup',
+])
 
 async function loadTestForTeam(testId, teamId) {
   let q = adminDb
@@ -26,22 +33,51 @@ async function loadTestForTeam(testId, teamId) {
   return data
 }
 
-function findSegmentForTime(segments, relSec) {
-  if (!segments?.length) return null
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i]
-    const nextStart = segments[i + 1]?.start ?? Infinity
-    if (relSec >= seg.start && relSec < nextStart) return seg
-  }
-  return segments[segments.length - 1]
-}
+/**
+ * Convert a raw event record into a human-readable action + target.
+ * Priority: metadata.text > metadata.label > selector ID > element type
+ */
+function describeEvent(event) {
+  const { type, selector, url, metadata } = event
+  const metaText = (metadata?.text || metadata?.label || '').trim().slice(0, 80) || null
+  const urlPath = url ? (url.replace(/^https?:\/\/[^/]+/, '') || '/') : null
 
-function findInsightsForSegment(insights, seg) {
-  if (!seg || !insights?.length) return []
-  const segEnd = seg.end ?? seg.start + 10
-  return insights.filter(
-    (ins) => ins.start != null && ins.end != null && ins.start < segEnd && ins.end > seg.start
-  )
+  if (type === 'pageview') {
+    return { action: 'Opened', target: urlPath || '/', isNav: true }
+  }
+
+  if (type === 'click') {
+    if (metaText) return { action: 'Clicked', target: metaText }
+    // Try to pull a meaningful ID from the CSS selector
+    const idMatch = selector?.match(/#([\w-]+)/)
+    if (idMatch) return { action: 'Clicked', target: `#${idMatch[1]}` }
+    // Get element tag
+    const tagMatch = selector?.match(/^([a-zA-Z]+)/)
+    const tag = tagMatch?.[1]?.toLowerCase()
+    if (tag === 'button') return { action: 'Clicked', target: 'a button' }
+    if (tag === 'a') return { action: 'Clicked', target: 'a link' }
+    if (tag === 'input') return { action: 'Clicked', target: 'an input' }
+    return { action: 'Clicked', target: tag ? `a ${tag}` : 'an element' }
+  }
+
+  if (type === 'input' || type === 'change') {
+    const name = metadata?.name || metadata?.placeholder || metadata?.label || null
+    if (name) return { action: 'Typed in', target: name }
+    const tagMatch = selector?.match(/^([a-zA-Z]+)/)
+    const tag = tagMatch?.[1]?.toLowerCase()
+    return { action: 'Typed in', target: tag || 'a field' }
+  }
+
+  if (type === 'submit') {
+    return { action: 'Submitted', target: metaText || 'a form' }
+  }
+
+  if (type === 'select' || type === 'selectchange') {
+    const name = metadata?.name || metaText || null
+    return { action: 'Selected', target: name || 'a dropdown option' }
+  }
+
+  return { action: type, target: metaText || urlPath || '' }
 }
 
 // GET /api/tests/:testId/participants/:participantId/story
@@ -51,7 +87,6 @@ router.get('/:testId/participants/:participantId/story', requireAuth, async (req
   const test = await loadTestForTeam(testId, req.teamId)
   if (!test) return res.status(404).json({ error: 'Test not found' })
 
-  // Get participant
   const { data: participant, error: pErr } = await adminDb
     .from('participants')
     .select('id, name, tid')
@@ -61,11 +96,11 @@ router.get('/:testId/participants/:participantId/story', requireAuth, async (req
 
   if (pErr || !participant) return res.status(404).json({ error: 'Participant not found' })
 
-  // Fetch events + recordings + transcript in parallel
+  // Fetch events + recordings in parallel
   const [eventsResult, recordingsResult] = await Promise.all([
     adminDb
       .from('events')
-      .select('id, type, selector, url, metadata, timestamp, x, y, vw, vh, screenshot_object_path')
+      .select('id, type, selector, url, metadata, timestamp, screenshot_object_path')
       .eq('tid', participant.tid)
       .eq('test_id', testId)
       .order('timestamp', { ascending: true }),
@@ -77,160 +112,173 @@ router.get('/:testId/participants/:participantId/story', requireAuth, async (req
       .order('created_at', { ascending: true }),
   ])
 
-  const events = eventsResult.data ?? []
+  const allEvents = eventsResult.data ?? []
   const recordings = recordingsResult.data ?? []
 
-  // Get transcript for the first done recording
+  // Get first completed transcript
   let transcript = null
   if (recordings.length > 0) {
-    const recordingIds = recordings.map((r) => r.id)
-    const { data: transcriptData } = await adminDb
+    const { data } = await adminDb
       .from('transcripts')
       .select('id, status, transcript_text, segments, insights, insights_status')
-      .in('recording_id', recordingIds)
+      .in('recording_id', recordings.map((r) => r.id))
       .eq('status', 'done')
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle()
-    transcript = transcriptData
+    transcript = data
   }
 
-  const segments = Array.isArray(transcript?.segments) ? transcript.segments : []
   const insights = Array.isArray(transcript?.insights) ? transcript.insights : []
 
-  // Session start timestamp
-  const sessionStart = events.length > 0 ? new Date(events[0].timestamp).getTime() : null
-  const sessionEnd =
-    events.length > 1 ? new Date(events[events.length - 1].timestamp).getTime() : null
+  // Session timing from all events (including noise, for accurate duration)
+  const sessionStart = allEvents.length > 0 ? new Date(allEvents[0].timestamp).getTime() : null
+  const sessionEnd = allEvents.length > 1 ? new Date(allEvents[allEvents.length - 1].timestamp).getTime() : null
   const sessionDurationMs = sessionStart && sessionEnd ? sessionEnd - sessionStart : null
 
-  // Generate signed screenshot URLs in bulk
-  const screenshotPaths = [...new Set(events.filter((e) => e.screenshot_object_path).map((e) => e.screenshot_object_path))]
+  // Filter to meaningful events only
+  const events = allEvents.filter((e) => !NOISE_TYPES.has(e.type))
+
+  // Generate signed screenshot URLs in bulk (from all events, including noise, for coverage)
+  const screenshotPaths = [
+    ...new Set(
+      allEvents.filter((e) => e.screenshot_object_path).map((e) => e.screenshot_object_path)
+    ),
+  ]
   const signedUrls = {}
   if (screenshotPaths.length > 0) {
     const { data: urlData } = await adminDb.storage
       .from(SCREENSHOT_BUCKET)
       .createSignedUrls(screenshotPaths, SIGNED_URL_EXPIRES)
     if (urlData) {
-      for (const item of urlData) {
-        signedUrls[item.path] = item.signedUrl
-      }
+      for (const item of urlData) signedUrls[item.path] = item.signedUrl
     }
   }
 
-  // Build 5-second timeline windows
-  const WINDOW_SEC = 5
-  const windows = []
+  // ─── Build page sections (group by URL changes) ──────────────────────────────
+  //
+  // A section = one URL visit. Sections begin at the first event and whenever
+  // the URL changes (pageview event OR any event on a different URL).
+  // Events within a section are shown as an action list.
+  //
+  const pageSections = []
+  let currentSection = null
 
   for (const event of events) {
-    const relSec = sessionStart ? (new Date(event.timestamp).getTime() - sessionStart) / 1000 : 0
-    const windowKey = Math.floor(relSec / WINDOW_SEC)
+    const relSec = sessionStart
+      ? (new Date(event.timestamp).getTime() - sessionStart) / 1000
+      : 0
+    const urlPath = event.url ? (event.url.replace(/^https?:\/\/[^/]+/, '') || '/') : null
+    const isNav = event.type === 'pageview'
 
-    let win = windows.find((w) => w.windowKey === windowKey)
-    if (!win) {
-      const seg = findSegmentForTime(segments, relSec)
-      win = {
-        windowKey,
-        start_seconds: windowKey * WINDOW_SEC,
-        events: [],
-        segment: seg
-          ? { text: seg.text, start: seg.start, end: seg.end ?? null }
-          : null,
-        insights: findInsightsForSegment(insights, findSegmentForTime(segments, relSec)),
+    // Start a new section when: first event, explicit navigation, or URL changed
+    if (!currentSection || (isNav && urlPath && urlPath !== currentSection.url)) {
+      currentSection = {
+        url: urlPath,
+        entered_at_seconds: Math.round(relSec),
+        duration_seconds: null, // filled after loop
+        actions: [],
         screenshot_url: null,
       }
-      windows.push(win)
+      pageSections.push(currentSection)
     }
 
-    win.events.push({
-      id: event.id,
-      type: event.type,
-      selector: event.selector || null,
-      url: event.url || null,
-      metadata: event.metadata || null,
-      relative_seconds: Math.round(relSec * 10) / 10,
-    })
+    // Skip bare pageview events from the actions list — they're already the section header
+    if (!isNav) {
+      const { action, target } = describeEvent(event)
+      currentSection.actions.push({
+        relative_seconds: Math.round(relSec * 10) / 10,
+        type: event.type,
+        action,
+        target,
+      })
+    }
 
-    // Last screenshot in the window wins
+    // Keep the last screenshot per section
     if (event.screenshot_object_path && signedUrls[event.screenshot_object_path]) {
-      win.screenshot_url = signedUrls[event.screenshot_object_path]
+      currentSection.screenshot_url = signedUrls[event.screenshot_object_path]
     }
   }
 
-  // Remove redundant segment duplicates across adjacent windows
-  // (keep the segment text only on the first window where that segment appears)
-  const seenSegmentStarts = new Set()
-  for (const win of windows) {
-    if (win.segment) {
-      if (seenSegmentStarts.has(win.segment.start)) {
-        win.segment = null
-      } else {
-        seenSegmentStarts.add(win.segment.start)
-      }
+  // Calculate time spent per page
+  for (let i = 0; i < pageSections.length; i++) {
+    const next = pageSections[i + 1]
+    if (next) {
+      pageSections[i].duration_seconds = next.entered_at_seconds - pageSections[i].entered_at_seconds
+    } else if (sessionDurationMs != null) {
+      pageSections[i].duration_seconds = Math.round(sessionDurationMs / 1000) - pageSections[i].entered_at_seconds
     }
   }
 
-  // ─── GPT-4o synthesis ──────────────────────────────────────────────────────
+  // Remove sections with zero actions AND no screenshot (empty visits)
+  const filteredSections = pageSections.filter(
+    (s) => s.actions.length > 0 || s.screenshot_url
+  )
+
+  // ─── GPT-4o synthesis ────────────────────────────────────────────────────────
   let aiSummary = null
   let keyFindings = []
 
-  if (events.length > 0 && process.env.OPENAI_API_KEY) {
+  if (allEvents.length > 0 && process.env.OPENAI_API_KEY) {
     try {
       const durationLabel = sessionDurationMs
         ? `${Math.round(sessionDurationMs / 1000)}s`
         : 'unknown'
 
-      const eventLines = events.slice(0, 100).map((e) => {
+      // Feed the AI meaningful events only (not raw selectors)
+      const actionLines = events.slice(0, 120).map((e) => {
         const relSec = sessionStart
           ? Math.round((new Date(e.timestamp).getTime() - sessionStart) / 1000)
           : 0
-        const parts = [`[${relSec}s] ${e.type}`]
-        if (e.url) parts.push(`on ${e.url}`)
-        if (e.selector) parts.push(`(${e.selector})`)
-        return parts.join(' ')
+        const { action, target } = describeEvent(e)
+        return `[${relSec}s] ${action} ${target}`
       })
 
       const insightLines =
         insights.length > 0
-          ? insights
-              .map((ins) => `- [${ins.type}] "${ins.quote || ''}" — ${ins.label || ''}`)
-              .join('\n')
+          ? insights.map((ins) => `- [${ins.type}] "${ins.quote || ''}" — ${ins.label || ''}`).join('\n')
           : '(none detected)'
 
       const transcriptExcerpt = transcript?.transcript_text?.slice(0, 3000) ?? '(no transcript)'
 
-      const prompt = `You are a UX research analyst. Synthesize this participant session into a clear, evidence-based story.
+      const prompt = `You are a UX research analyst. Synthesize this usability test session into a clear, honest story.
 
 TEST
 Name: ${test.name}
 Research intent: ${test.research_intent || 'Not specified'}
 Prototype context: ${test.context || 'Not specified'}
 
-PARTICIPANT
-Name: ${participant.name}
-Session duration: ${durationLabel}
-Total interactions: ${events.length}
+PARTICIPANT: ${participant.name}
+Session duration: ${durationLabel} · ${events.length} meaningful interactions (noise filtered)
 
-EVENTS (chronological)
-${eventLines.join('\n')}
+ACTIONS (chronological — what they clicked/typed/submitted)
+${actionLines.join('\n')}
 
-TRANSCRIPT (what the participant said aloud)
+TRANSCRIPT (what they said aloud — timing is relative to recording start, may differ from session start)
 ${transcriptExcerpt}
 
-EMOTIONAL SIGNALS (AI-detected from transcript)
+EMOTIONAL SIGNALS (detected in transcript)
 ${insightLines}
 
-Write a concise session story. Return JSON with exactly:
+Write a concise, honest session story grounded in the data above.
+Return JSON with:
 {
-  "summary": "2-3 sentence executive summary of what happened and how the participant experienced the prototype",
-  "key_findings": ["Finding 1 (specific, grounded in data)", "Finding 2", "Finding 3", "Finding 4 (optional)", "Finding 5 (optional)"]
+  "summary": "2–3 sentence executive summary of what this participant experienced — be specific, cite real moments",
+  "key_findings": [
+    "Finding 1 (specific and actionable — name the element, the moment, or the quote)",
+    "Finding 2",
+    "Finding 3",
+    "Finding 4 (optional)",
+    "Finding 5 (optional)"
+  ]
 }
-Focus on what matters: where they struggled, what worked, what surprised them. Be specific — cite timestamps, actions, and quotes where relevant.`
+
+Rules: Do NOT fabricate moments not in the data. If the transcript and events seem misaligned in time, trust the content not the timestamps. Focus on usability friction and delight.`
 
       const completion = await getOpenAI().chat.completions.create({
         model: 'gpt-4o',
-        temperature: 0.3,
-        max_tokens: 600,
+        temperature: 0.2,
+        max_tokens: 700,
         response_format: { type: 'json_object' },
         messages: [{ role: 'user', content: prompt }],
       })
@@ -239,7 +287,7 @@ Focus on what matters: where they struggled, what worked, what surprised them. B
       aiSummary = typeof parsed.summary === 'string' ? parsed.summary : null
       keyFindings = Array.isArray(parsed.key_findings) ? parsed.key_findings.slice(0, 5) : []
     } catch (err) {
-      console.error('[story] GPT-4o synthesis error:', err.message)
+      console.error('[story] GPT-4o error:', err.message)
     }
   }
 
@@ -266,16 +314,19 @@ Focus on what matters: where they struggled, what worked, what surprised them. B
           id: transcript.id,
           status: transcript.status,
           insights_status: transcript.insights_status,
-          has_insights: insights.length > 0,
           insight_count: insights.length,
         }
       : null,
-    session_start: events.length > 0 ? events[0].timestamp : null,
+    // Return insights flat — do NOT correlate to event timeline (offset is unknown)
+    insights,
+    session_start: allEvents.length > 0 ? allEvents[0].timestamp : null,
     session_duration_ms: sessionDurationMs,
-    total_events: events.length,
+    total_events: allEvents.length,
+    meaningful_events: events.length,
     ai_summary: aiSummary,
     key_findings: keyFindings,
-    timeline: windows,
+    // Page-grouped sections replace raw 5-second windows
+    page_sections: filteredSections,
   })
 })
 

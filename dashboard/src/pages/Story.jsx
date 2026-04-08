@@ -2,18 +2,20 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 
-// ─── Insight metadata ────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const INSIGHT_META = {
-  confusion:   { emoji: '🟡', label: 'Confusion',   colorClass: 'warn' },
-  frustration: { emoji: '🔴', label: 'Frustration', colorClass: 'danger' },
-  delight:     { emoji: '🟢', label: 'Delight',     colorClass: 'success' },
-  hesitation:  { emoji: '🟠', label: 'Hesitation',  colorClass: 'info' },
-  discovery:   { emoji: '🔵', label: 'Discovery',   colorClass: 'discovery' },
-  comparison:  { emoji: '⚪', label: 'Comparison',  colorClass: 'comparison' },
+  confusion:   { emoji: '🟡', label: 'Confusion',   bg: 'var(--color-warn-bg)',        border: 'var(--color-warn-border)',    text: 'var(--color-warn)' },
+  frustration: { emoji: '🔴', label: 'Frustration', bg: 'var(--color-danger-bg)',      border: 'var(--color-danger-border)',  text: 'var(--color-danger)' },
+  delight:     { emoji: '🟢', label: 'Delight',     bg: 'var(--color-success-bg)',     border: 'var(--color-success-border)', text: 'var(--color-success)' },
+  hesitation:  { emoji: '🟠', label: 'Hesitation',  bg: 'var(--color-info-bg)',        border: 'var(--color-info-border)',    text: '#3b82f6' },
+  discovery:   { emoji: '🔵', label: 'Discovery',   bg: '#f0fdfa',                     border: '#99f6e4',                     text: '#0f766e' },
+  comparison:  { emoji: '⚪', label: 'Comparison',  bg: 'var(--color-surface-raised)', border: 'var(--color-border-strong)',  text: 'var(--color-text-secondary)' },
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function fmtTime(seconds) {
+
+function fmtSec(seconds) {
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}:${String(s).padStart(2, '0')}`
@@ -22,169 +24,133 @@ function fmtTime(seconds) {
 function fmtDuration(ms) {
   if (ms == null) return null
   const s = Math.round(ms / 1000)
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return m > 0 ? `${m}m ${r}s` : `${r}s`
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-function humanEventType(type) {
-  const map = {
-    click: 'Clicked',
-    input: 'Typed',
-    scroll: 'Scrolled',
-    pageview: 'Viewed page',
-    keypress: 'Key press',
-    focus: 'Focused',
-    blur: 'Left field',
-    mousemove: 'Mouse moved',
-    change: 'Changed',
-    submit: 'Submitted',
-  }
-  return map[type] || type
+function fmtPageDuration(sec) {
+  if (sec == null || sec < 0) return null
+  if (sec < 60) return `${sec}s`
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`
 }
 
-function stripScheme(url) {
-  if (!url) return null
-  return url.replace(/^https?:\/\/[^/]+/, '') || url
+// Strip scheme + host from URL, collapse long paths
+function urlLabel(url) {
+  if (!url) return '/'
+  const path = url.replace(/^https?:\/\/[^/]+/, '') || '/'
+  return path.length > 60 ? path.slice(0, 57) + '…' : path
 }
 
-function condensedSelector(selector) {
-  if (!selector) return null
-  // Show last meaningful segment (e.g. #submit-btn or .button)
-  const parts = selector.split(/[\s>]+/)
-  return parts[parts.length - 1] || selector
-}
+// ─── Insight card (shown once per unique insight) ─────────────────────────────
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function InsightChip({ type }) {
-  const meta = INSIGHT_META[type]
+function InsightCard({ insight, recordingId, testId, participantId }) {
+  const meta = INSIGHT_META[insight.type]
   if (!meta) return null
+  const transcriptLink =
+    recordingId && insight.start != null
+      ? `/tests/${testId}/participants/${participantId}/transcript?recordingId=${recordingId}&t=${Math.floor(insight.start)}`
+      : null
+
   return (
-    <span className={`pp-story-insight-chip pp-story-insight-chip--${type}`}>
-      {meta.emoji} {meta.label}
-    </span>
+    <div
+      className="pp-story-insight-card"
+      style={{
+        background: meta.bg,
+        borderLeftColor: meta.border,
+      }}
+    >
+      <div className="pp-story-insight-card-header">
+        <span className="pp-story-insight-type-label" style={{ color: meta.text }}>
+          {meta.emoji} {meta.label.toUpperCase()}
+        </span>
+        {insight.start != null && (
+          <span className="pp-story-insight-timestamp">
+            at {fmtSec(insight.start)} into recording
+          </span>
+        )}
+      </div>
+      {insight.label && (
+        <p className="pp-story-insight-summary">{insight.label}</p>
+      )}
+      {insight.quote && (
+        <blockquote className="pp-story-insight-quote">"{insight.quote}"</blockquote>
+      )}
+      {transcriptLink && (
+        <Link to={transcriptLink} className="pp-story-insight-link">
+          Listen in transcript ↗
+        </Link>
+      )}
+    </div>
   )
 }
 
-function TimelineWindow({ win, participantId, testId, firstRecordingId }) {
-  const [expanded, setExpanded] = useState(false)
-  const hasInsights = win.insights?.length > 0
-  const hasScreenshot = !!win.screenshot_url
-  const hasSegment = !!win.segment
-  const hasMultipleEvents = win.events.length > 1
+// ─── Page section (one URL visit) ────────────────────────────────────────────
 
-  // Primary event (first click or first event overall)
-  const primaryEvent =
-    win.events.find((e) => e.type === 'click') || win.events[0]
+function PageSection({ section, index }) {
+  const [expanded, setExpanded] = useState(index === 0 || section.actions.length <= 4)
+  const MAX_COLLAPSED = 4
+  const visibleActions = expanded ? section.actions : section.actions.slice(0, MAX_COLLAPSED)
+  const hiddenCount = section.actions.length - MAX_COLLAPSED
 
   return (
-    <div className={`pp-story-window${hasInsights ? ' pp-story-window--insight' : ''}`}>
-      {/* Time marker */}
-      <div className="pp-story-window-time">
-        <span className="pp-story-time-pill">{fmtTime(win.start_seconds)}</span>
-        {hasInsights && (
-          <div className="pp-story-window-chips">
-            {win.insights.map((ins, i) => (
-              <InsightChip key={i} type={ins.type} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="pp-story-window-content">
-        {/* Primary event */}
-        <div className="pp-story-event-primary">
-          <span className="pp-story-event-type">{humanEventType(primaryEvent.type)}</span>
-          {primaryEvent.selector && (
-            <code className="pp-story-selector">{condensedSelector(primaryEvent.selector)}</code>
-          )}
-          {primaryEvent.url && !primaryEvent.selector && (
-            <span className="pp-story-url">{stripScheme(primaryEvent.url)}</span>
+    <div className="pp-story-page-section">
+      {/* Section header */}
+      <div className="pp-story-page-header">
+        <div className="pp-story-page-url-row">
+          <span className="pp-story-page-icon">🌐</span>
+          <code className="pp-story-page-url">{urlLabel(section.url)}</code>
+          {section.duration_seconds != null && section.duration_seconds > 0 && (
+            <span className="pp-story-page-duration">
+              {fmtPageDuration(section.duration_seconds)} on page
+            </span>
           )}
         </div>
+        <span className="pp-story-page-entered">
+          entered at {fmtSec(section.entered_at_seconds)}
+        </span>
+      </div>
 
-        {/* Additional events (collapsed by default) */}
-        {hasMultipleEvents && (
-          <div className="pp-story-more-events">
-            {!expanded && win.events.length > 1 && (
-              <button
-                type="button"
-                className="pp-story-expand-btn"
-                onClick={() => setExpanded(true)}
-              >
-                +{win.events.length - 1} more interaction{win.events.length > 2 ? 's' : ''}
-              </button>
-            )}
-            {expanded && (
-              <ul className="pp-story-event-list">
-                {win.events.slice(1).map((ev, i) => (
-                  <li key={ev.id || i} className="pp-story-event-item">
-                    <span className="pp-story-event-type">{humanEventType(ev.type)}</span>
-                    {ev.selector && (
-                      <code className="pp-story-selector">{condensedSelector(ev.selector)}</code>
-                    )}
-                    {ev.url && !ev.selector && (
-                      <span className="pp-story-url">{stripScheme(ev.url)}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* Transcript segment */}
-        {hasSegment && (
-          <blockquote className="pp-story-quote">
-            <span className="pp-story-quote-icon">💬</span>
-            {'"'}{win.segment.text}{'"'}
-            {firstRecordingId && win.segment.start != null && (
-              <Link
-                to={`/tests/${testId}/participants/${participantId}/transcript?recordingId=${firstRecordingId}&t=${Math.floor(win.segment.start)}`}
-                className="pp-story-quote-link"
-                title="View in transcript"
-              >
-                ↗
-              </Link>
-            )}
-          </blockquote>
-        )}
-
-        {/* Insight details */}
-        {hasInsights && win.insights.map((ins, i) => {
-          const meta = INSIGHT_META[ins.type]
-          return (
-            <div key={i} className={`pp-story-insight-card pp-story-insight-card--${ins.type}`}>
-              <span className="pp-story-insight-label">
-                {meta?.emoji} {meta?.label || ins.type}
-              </span>
-              {ins.label && <span className="pp-story-insight-summary">{ins.label}</span>}
-              {ins.quote && <em className="pp-story-insight-quote">"{ins.quote}"</em>}
+      {/* Actions list */}
+      {section.actions.length === 0 ? (
+        <p className="pp-story-page-empty">Visited page — no interactions recorded</p>
+      ) : (
+        <div className="pp-story-page-actions">
+          {visibleActions.map((action, i) => (
+            <div key={i} className="pp-story-action-row">
+              <span className="pp-story-action-time">{fmtSec(action.relative_seconds)}</span>
+              <span className="pp-story-action-verb">{action.action}</span>
+              <span className="pp-story-action-target">{action.target}</span>
             </div>
-          )
-        })}
-      </div>
-
-      {/* Screenshot thumbnail */}
-      {hasScreenshot && (
-        <div className="pp-story-screenshot-col">
-          <a
-            href={win.screenshot_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="pp-story-screenshot-link"
-            title="View screenshot"
-          >
-            <img
-              src={win.screenshot_url}
-              alt={`Screenshot at ${fmtTime(win.start_seconds)}`}
-              className="pp-story-screenshot"
-              loading="lazy"
-            />
-          </a>
+          ))}
+          {!expanded && hiddenCount > 0 && (
+            <button
+              type="button"
+              className="pp-story-show-more"
+              onClick={() => setExpanded(true)}
+            >
+              + {hiddenCount} more interaction{hiddenCount !== 1 ? 's' : ''}
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Screenshot */}
+      {section.screenshot_url && (
+        <a
+          href={section.screenshot_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pp-story-screenshot-wrap"
+          title="View screenshot at this moment"
+        >
+          <img
+            src={section.screenshot_url}
+            alt={`Screenshot on ${urlLabel(section.url)}`}
+            className="pp-story-screenshot"
+            loading="lazy"
+          />
+          <span className="pp-story-screenshot-label">View full screenshot ↗</span>
+        </a>
       )}
     </div>
   )
@@ -203,21 +169,9 @@ export default function Story() {
     setLoading(true)
     setError(null)
     apiFetch(`/api/tests/${testId}/participants/${participantId}/story`)
-      .then((data) => {
-        if (!cancelled) {
-          setStory(data)
-          setLoading(false)
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err.message || 'Failed to load session story')
-          setLoading(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
+      .then((data) => { if (!cancelled) { setStory(data); setLoading(false) } })
+      .catch((err) => { if (!cancelled) { setError(err.message || 'Failed to load story'); setLoading(false) } })
+    return () => { cancelled = true }
   }, [testId, participantId])
 
   if (loading) {
@@ -225,11 +179,9 @@ export default function Story() {
       <div className="pp-story-page">
         <div className="pp-story-loading">
           <div className="pp-spinner" aria-label="Generating session story…" />
-          <p className="pp-story-loading-text">
-            Synthesizing session story<span className="pp-ellipsis" />
-          </p>
-          <p className="pp-muted" style={{ fontSize: '0.8rem' }}>
-            Correlating events, transcript, and insights with AI analysis
+          <p className="pp-story-loading-label">Generating session story…</p>
+          <p className="pp-muted pp-story-loading-sub">
+            Filtering events · reading transcript · synthesizing with AI
           </p>
         </div>
       </div>
@@ -249,25 +201,28 @@ export default function Story() {
 
   if (!story) return null
 
-  const { test, participant, transcript, recordings, session_duration_ms, total_events, ai_summary, key_findings, timeline } = story
-  const firstRecording = recordings?.[0]
-  const hasInsights = transcript?.has_insights
+  const {
+    test, participant, transcript, recordings, insights,
+    session_duration_ms, total_events, meaningful_events,
+    ai_summary, key_findings, page_sections,
+  } = story
 
-  // Count insight types in timeline
-  const insightCounts = {}
-  for (const win of (timeline || [])) {
-    for (const ins of (win.insights || [])) {
-      insightCounts[ins.type] = (insightCounts[ins.type] || 0) + 1
-    }
+  const firstRecording = recordings?.[0]
+  const hasInsights = insights?.length > 0
+  const hasSections = page_sections?.length > 0
+
+  // Count insight types for the header pills
+  const insightTypeCounts = {}
+  for (const ins of (insights || [])) {
+    insightTypeCounts[ins.type] = (insightTypeCounts[ins.type] || 0) + 1
   }
 
   return (
     <div className="pp-story-page">
-      {/* Back nav */}
+
+      {/* ── Back nav ── */}
       <nav className="pp-story-nav">
-        <Link to={`/tests/${testId}`} className="pp-story-back">
-          ← {test.name}
-        </Link>
+        <Link to={`/tests/${testId}`} className="pp-story-back">← {test.name}</Link>
         {firstRecording && (
           <Link
             to={`/tests/${testId}/participants/${participantId}/transcript?recordingId=${firstRecording.id}`}
@@ -278,62 +233,52 @@ export default function Story() {
         )}
       </nav>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header className="pp-story-header">
-        <div className="pp-story-header-meta">
-          {test.research_intent && (
-            <span className="pp-story-intent-badge">{test.research_intent}</span>
-          )}
-        </div>
+        {test.research_intent && (
+          <p className="pp-story-intent">{test.research_intent}</p>
+        )}
         <h1 className="pp-story-title">
-          {participant.name}
+          <span className="pp-story-participant-name">{participant.name}</span>
           <span className="pp-story-title-sub">'s Session</span>
         </h1>
-        <div className="pp-story-stats">
+        <div className="pp-story-meta-row">
           {fmtDuration(session_duration_ms) && (
-            <span className="pp-story-stat">
-              <strong>{fmtDuration(session_duration_ms)}</strong> session
-            </span>
+            <span className="pp-story-meta-chip">{fmtDuration(session_duration_ms)} session</span>
           )}
-          <span className="pp-story-stat">
-            <strong>{total_events}</strong> interactions
-          </span>
-          {transcript?.insight_count > 0 && (
-            <span className="pp-story-stat">
-              <strong>{transcript.insight_count}</strong> emotional signals
-            </span>
+          <span className="pp-story-meta-chip">{meaningful_events ?? total_events} interactions</span>
+          {page_sections?.length > 0 && (
+            <span className="pp-story-meta-chip">{page_sections.length} page{page_sections.length !== 1 ? 's' : ''} visited</span>
           )}
-          {Object.keys(insightCounts).length > 0 && (
-            <span className="pp-story-insight-pills">
-              {Object.entries(insightCounts).map(([type, count]) => {
-                const meta = INSIGHT_META[type]
-                return meta ? (
-                  <span key={type} className={`pp-story-insight-chip pp-story-insight-chip--${type}`}>
-                    {meta.emoji} {count}
-                  </span>
-                ) : null
-              })}
-            </span>
-          )}
+          {Object.entries(insightTypeCounts).map(([type, count]) => {
+            const meta = INSIGHT_META[type]
+            return meta ? (
+              <span
+                key={type}
+                className="pp-story-meta-insight"
+                style={{ background: meta.bg, borderColor: meta.border, color: meta.text }}
+              >
+                {meta.emoji} {count} {meta.label.toLowerCase()}
+              </span>
+            ) : null
+          })}
         </div>
       </header>
 
-      {/* AI Summary */}
+      {/* ── AI Summary ── */}
       {ai_summary && (
         <section className="pp-story-summary-section">
           <div className="pp-story-summary-card">
-            <div className="pp-story-summary-label">✦ AI Session Summary</div>
+            <div className="pp-story-summary-eyebrow">✦ AI Session Summary</div>
             <p className="pp-story-summary-text">{ai_summary}</p>
           </div>
 
           {key_findings?.length > 0 && (
-            <div className="pp-story-findings">
-              <h3 className="pp-story-findings-title">Key Findings</h3>
+            <div className="pp-story-findings-card">
+              <div className="pp-story-findings-eyebrow">Key Findings</div>
               <ol className="pp-story-findings-list">
-                {key_findings.map((finding, i) => (
-                  <li key={i} className="pp-story-finding-item">
-                    {finding}
-                  </li>
+                {key_findings.map((f, i) => (
+                  <li key={i} className="pp-story-finding">{f}</li>
                 ))}
               </ol>
             </div>
@@ -341,33 +286,75 @@ export default function Story() {
         </section>
       )}
 
-      {/* No AI summary fallback */}
-      {!ai_summary && total_events === 0 && (
-        <div className="pp-story-empty">
-          <p className="pp-muted">No session events recorded for this participant yet.</p>
-        </div>
-      )}
-
-      {/* Timeline */}
-      {timeline?.length > 0 && (
-        <section className="pp-story-timeline-section">
-          <h2 className="pp-story-timeline-title">Session Timeline</h2>
-          <p className="pp-story-timeline-sub pp-muted">
-            {timeline.length} moment{timeline.length !== 1 ? 's' : ''} · events, quotes, and emotional signals correlated by time
-          </p>
-          <div className="pp-story-timeline">
-            {timeline.map((win) => (
-              <TimelineWindow
-                key={win.windowKey}
-                win={win}
-                participantId={participantId}
+      {/* ── What they said ── */}
+      {hasInsights && (
+        <section className="pp-story-section">
+          <div className="pp-story-section-header">
+            <h2 className="pp-story-section-title">What they said</h2>
+            <p className="pp-story-section-sub">
+              Emotional signals detected in the recording transcript ·{' '}
+              <span className="pp-muted">timestamps are relative to recording start</span>
+            </p>
+          </div>
+          <div className="pp-story-insights-grid">
+            {insights.map((ins, i) => (
+              <InsightCard
+                key={i}
+                insight={ins}
+                recordingId={firstRecording?.id}
                 testId={testId}
-                firstRecordingId={firstRecording?.id}
+                participantId={participantId}
               />
             ))}
           </div>
         </section>
       )}
+
+      {!hasInsights && transcript && (
+        <section className="pp-story-section">
+          <div className="pp-story-section-header">
+            <h2 className="pp-story-section-title">What they said</h2>
+          </div>
+          <div className="pp-story-no-insights">
+            <p className="pp-muted">
+              No emotional signals were detected in the transcript for this session.{' '}
+              {firstRecording && (
+                <Link to={`/tests/${testId}/participants/${participantId}/transcript?recordingId=${firstRecording.id}`}>
+                  View full transcript →
+                </Link>
+              )}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* ── What they did ── */}
+      {hasSections && (
+        <section className="pp-story-section">
+          <div className="pp-story-section-header">
+            <h2 className="pp-story-section-title">What they did</h2>
+            <p className="pp-story-section-sub">
+              Meaningful interactions only — mouse moves, scrolls, and focus events filtered out
+            </p>
+          </div>
+          <div className="pp-story-sections-list">
+            {page_sections.map((section, i) => (
+              <PageSection key={i} section={section} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Empty state ── */}
+      {!hasSections && !hasInsights && !ai_summary && (
+        <div className="pp-story-empty">
+          <p className="pp-muted">No session data recorded for this participant yet.</p>
+          <Link to={`/tests/${testId}`} className="pp-btn-sm" style={{ marginTop: '1rem' }}>
+            ← Back to test
+          </Link>
+        </div>
+      )}
+
     </div>
   )
 }
