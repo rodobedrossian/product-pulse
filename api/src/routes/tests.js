@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { randomUUID } from 'crypto'
 import db from '../db.js'
+import adminDb from '../db-admin.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -63,7 +64,8 @@ router.post('/:id/auto-session', async (req, res) => {
 
   if (!tester_key) return res.status(400).json({ error: 'tester_key is required' })
 
-  const { data: test } = await db.from('tests').select('id, test_type').eq('id', id).single()
+  // Use adminDb for public endpoints — bypasses RLS (tests table is protected)
+  const { data: test } = await adminDb.from('tests').select('id, test_type').eq('id', id).single()
   if (!test) return res.status(404).json({ error: 'Test not found' })
   if (test.test_type !== 'observational') {
     return res.status(400).json({ error: 'This endpoint is only available for observational tests' })
@@ -75,7 +77,7 @@ router.post('/:id/auto-session', async (req, res) => {
 
   // Look up or create the tester (persistent identity across sessions)
   let testerId
-  const { data: existingTester } = await db
+  const { data: existingTester } = await adminDb
     .from('testers')
     .select('id, session_count')
     .eq('tester_key', tester_key)
@@ -83,12 +85,12 @@ router.post('/:id/auto-session', async (req, res) => {
 
   if (existingTester) {
     testerId = existingTester.id
-    await db
+    await adminDb
       .from('testers')
       .update({ last_seen: new Date().toISOString(), session_count: existingTester.session_count + 1 })
       .eq('id', testerId)
   } else {
-    const { data: newTester, error: testerErr } = await db
+    const { data: newTester, error: testerErr } = await adminDb
       .from('testers')
       .insert({ test_id: id, tester_key })
       .select('id')
@@ -100,7 +102,7 @@ router.post('/:id/auto-session', async (req, res) => {
   // Create a new participant session using the client-provided tid so events already
   // sent under that tid are correctly associated with this participant record.
   const tid = (clientTid && clientTid.length > 4) ? clientTid : randomUUID()
-  const { error: partErr } = await db
+  const { error: partErr } = await adminDb
     .from('participants')
     .insert({
       test_id: id,
@@ -155,9 +157,10 @@ router.get('/:id/snippet.js', (req, res) => {
 })
 
 // GET /api/tests/:id/tasks — public endpoint for participant overlay
+// Uses adminDb to bypass RLS — this is intentionally public (snippet calls it from any domain)
 router.get('/:id/tasks', async (req, res) => {
   const { id } = req.params
-  const { data: test } = await db
+  const { data: test } = await adminDb
     .from('tests')
     .select('test_type, goal_event')
     .eq('id', id)
@@ -167,7 +170,7 @@ router.get('/:id/tasks', async (req, res) => {
 
   let steps = []
   if (test.test_type === 'scenario') {
-    const { data } = await db
+    const { data } = await adminDb
       .from('steps')
       .select('order_index, title, task, goal_event')
       .eq('test_id', id)
@@ -179,11 +182,12 @@ router.get('/:id/tasks', async (req, res) => {
 })
 
 // GET /api/tests/:id/heartbeat — public (snippet polling)
+// Uses adminDb to bypass RLS — called from the dashboard without participant auth
 router.get('/:id/heartbeat', async (req, res) => {
   const { id } = req.params
   const since = new Date(Date.now() - 60 * 1000).toISOString()
 
-  const { data, error } = await db
+  const { data, error } = await adminDb
     .from('events')
     .select('timestamp')
     .eq('test_id', id)
