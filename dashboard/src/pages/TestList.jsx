@@ -68,8 +68,20 @@ export default function TestList() {
                   <Link to={`/tests/${test.id}`} className="pp-test-name-link">
                     {test.name}
                   </Link>
-                  <span className={`badge ${test.test_type === 'scenario' ? 'amber' : 'blue'}`}>
-                    {test.test_type === 'scenario' ? 'Scenario' : 'Single goal'}
+                  <span
+                    className={`badge ${
+                      test.test_type === 'scenario'
+                        ? 'amber'
+                        : test.test_type === 'observational'
+                          ? 'green'
+                          : 'blue'
+                    }`}
+                  >
+                    {test.test_type === 'scenario'
+                      ? 'Scenario'
+                      : test.test_type === 'observational'
+                        ? 'Observe & discover'
+                        : 'Single goal'}
                   </span>
                 </div>
                 <div className="pp-muted" style={{ marginTop: '0.2rem', fontSize: '0.8125rem' }}>
