@@ -31,6 +31,23 @@ function withApiBaseOnDeepLink(deepLink) {
   return `${deepLink}${sep}api_base=${encodeURIComponent(base)}`
 }
 
+function RecordingIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="9" y="2" width="6" height="11" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8" />
+    </svg>
+  )
+}
+
+function PlayIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7-11-7z" />
+    </svg>
+  )
+}
+
 export default function ParticipantAudioRecorder({ testId, participant, recordings }) {
   const [error, setError] = useState(null)
   const [desktopBusy, setDesktopBusy] = useState(false)
@@ -99,11 +116,13 @@ export default function ParticipantAudioRecorder({ testId, participant, recordin
       <div className="pp-participant-recorder-actions">
         <button
           type="button"
-          className="pp-btn-sm"
+          className="pp-btn-icon pp-participant-icon-btn"
           disabled={desktopBusy}
           onClick={() => openDesktopRecorder()}
+          title={desktopBusy ? 'Opening desktop recorder…' : 'Open desktop recorder'}
+          aria-label={desktopBusy ? 'Opening desktop recorder' : 'Open desktop recorder'}
         >
-          {desktopBusy ? 'Opening…' : 'Open desktop app'}
+          <RecordingIcon />
         </button>
       </div>
       {desktopErr && (
@@ -126,12 +145,14 @@ export default function ParticipantAudioRecorder({ testId, participant, recordin
               </span>
               <button
                 type="button"
-                className="pp-btn-sm"
+                className="pp-btn-icon pp-participant-icon-btn"
                 onClick={() =>
                   playRecording(r.id).catch((e) => setError(e.message))
                 }
+                title={playingId === r.id ? 'Recording loaded' : 'Play recording'}
+                aria-label={playingId === r.id ? 'Recording loaded' : 'Play recording'}
               >
-                {playingId === r.id ? 'Loaded' : 'Play'}
+                <PlayIcon />
               </button>
             </li>
           ))}

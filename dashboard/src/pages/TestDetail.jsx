@@ -1167,16 +1167,30 @@ export default function TestDetail() {
                       <div key={p.id} className="pp-participant-row">
                         <div className="pp-participant-row-main">
                           <span style={{ fontWeight: 600 }}>{p.name}</span>
-                          {buildParticipantLink(test.prototype_url, p.tid, id) ? (
-                            <div className="pp-link-row">
-                              <code>{buildParticipantLink(test.prototype_url, p.tid, id)}</code>
-                              <CopyButton text={buildParticipantLink(test.prototype_url, p.tid, id)} label="Copy link" />
-                            </div>
-                          ) : (
-                            <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
-                              Invalid prototype URL — update test prototype URL to generate participant links
-                            </span>
-                          )}
+                          {(() => {
+                            const participantLink = buildParticipantLink(test.prototype_url, p.tid, id)
+                            if (!participantLink) {
+                              return (
+                                <span className="pp-muted" style={{ fontSize: '0.75rem' }}>
+                                  Invalid prototype URL — update test prototype URL to generate participant links
+                                </span>
+                              )
+                            }
+                            return (
+                              <div className="pp-link-row pp-link-row--participant">
+                                <a
+                                  href={participantLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="pp-testing-link"
+                                  title={participantLink}
+                                >
+                                  Testing link
+                                </a>
+                                <CopyButton text={participantLink} label="Copy link" />
+                              </div>
+                            )
+                          })()}
                         </div>
                         <ParticipantAudioRecorder
                           testId={id}

@@ -887,6 +887,22 @@ details.pp-details[open] summary::before {
   gap: 0.5rem;
 }
 
+.pp-link-row--participant {
+  margin-top: 0.1rem;
+}
+
+.pp-testing-link {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.pp-testing-link:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 .pp-link-row code {
   flex: 1;
   min-width: 0;
@@ -988,6 +1004,11 @@ details.pp-details[open] summary::before {
 .pp-test-checkitem.is-done::before {
   content: "✓";
   color: var(--color-success);
+}
+
+.pp-participant-icon-btn {
+  width: 34px;
+  height: 34px;
 }
 
 .pp-loading {
