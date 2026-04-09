@@ -28,19 +28,6 @@ function fmtDuration(ms) {
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-function fmtPageDuration(sec) {
-  if (sec == null || sec < 0) return null
-  if (sec < 60) return `${sec}s`
-  return `${Math.floor(sec / 60)}m ${sec % 60}s`
-}
-
-// Strip scheme + host from URL, collapse long paths
-function urlLabel(url) {
-  if (!url) return '/'
-  const path = url.replace(/^https?:\/\/[^/]+/, '') || '/'
-  return path.length > 60 ? path.slice(0, 57) + '…' : path
-}
-
 // ─── Insight card (shown once per unique insight) ─────────────────────────────
 
 function InsightCard({ insight, recordingId, testId, participantId }) {
@@ -79,78 +66,6 @@ function InsightCard({ insight, recordingId, testId, participantId }) {
         <Link to={transcriptLink} className="pp-story-insight-link">
           Listen in transcript ↗
         </Link>
-      )}
-    </div>
-  )
-}
-
-// ─── Page section (one URL visit) ────────────────────────────────────────────
-
-function PageSection({ section, index }) {
-  const [expanded, setExpanded] = useState(index === 0 || section.actions.length <= 4)
-  const MAX_COLLAPSED = 4
-  const visibleActions = expanded ? section.actions : section.actions.slice(0, MAX_COLLAPSED)
-  const hiddenCount = section.actions.length - MAX_COLLAPSED
-
-  return (
-    <div className="pp-story-page-section">
-      {/* Section header */}
-      <div className="pp-story-page-header">
-        <div className="pp-story-page-url-row">
-          <span className="pp-story-page-icon">🌐</span>
-          <code className="pp-story-page-url">{urlLabel(section.url)}</code>
-          {section.duration_seconds != null && section.duration_seconds > 0 && (
-            <span className="pp-story-page-duration">
-              {fmtPageDuration(section.duration_seconds)} on page
-            </span>
-          )}
-        </div>
-        <span className="pp-story-page-entered">
-          entered at {fmtSec(section.entered_at_seconds)}
-        </span>
-      </div>
-
-      {/* Actions list */}
-      {section.actions.length === 0 ? (
-        <p className="pp-story-page-empty">Visited page — no interactions recorded</p>
-      ) : (
-        <div className="pp-story-page-actions">
-          {visibleActions.map((action, i) => (
-            <div key={i} className="pp-story-action-row">
-              <span className="pp-story-action-time">{fmtSec(action.relative_seconds)}</span>
-              <span className="pp-story-action-verb">{action.action}</span>
-              <span className="pp-story-action-target">{action.target}</span>
-            </div>
-          ))}
-          {!expanded && hiddenCount > 0 && (
-            <button
-              type="button"
-              className="pp-story-show-more"
-              onClick={() => setExpanded(true)}
-            >
-              + {hiddenCount} more interaction{hiddenCount !== 1 ? 's' : ''}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Screenshot */}
-      {section.screenshot_url && (
-        <a
-          href={section.screenshot_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="pp-story-screenshot-wrap"
-          title="View screenshot at this moment"
-        >
-          <img
-            src={section.screenshot_url}
-            alt={`Screenshot on ${urlLabel(section.url)}`}
-            className="pp-story-screenshot"
-            loading="lazy"
-          />
-          <span className="pp-story-screenshot-label">View full screenshot ↗</span>
-        </a>
       )}
     </div>
   )
@@ -204,12 +119,11 @@ export default function Story() {
   const {
     test, participant, transcript, recordings, insights,
     session_duration_ms, total_events, meaningful_events,
-    ai_summary, key_findings, page_sections,
+    ai_summary, key_findings,
   } = story
 
   const firstRecording = recordings?.[0]
   const hasInsights = insights?.length > 0
-  const hasSections = page_sections?.length > 0
 
   // Count insight types for the header pills
   const insightTypeCounts = {}
@@ -247,9 +161,6 @@ export default function Story() {
             <span className="pp-story-meta-chip">{fmtDuration(session_duration_ms)} session</span>
           )}
           <span className="pp-story-meta-chip">{meaningful_events ?? total_events} interactions</span>
-          {page_sections?.length > 0 && (
-            <span className="pp-story-meta-chip">{page_sections.length} page{page_sections.length !== 1 ? 's' : ''} visited</span>
-          )}
           {Object.entries(insightTypeCounts).map(([type, count]) => {
             const meta = INSIGHT_META[type]
             return meta ? (
@@ -328,25 +239,8 @@ export default function Story() {
         </section>
       )}
 
-      {/* ── What they did ── */}
-      {hasSections && (
-        <section className="pp-story-section">
-          <div className="pp-story-section-header">
-            <h2 className="pp-story-section-title">What they did</h2>
-            <p className="pp-story-section-sub">
-              Meaningful interactions only — mouse moves, scrolls, and focus events filtered out
-            </p>
-          </div>
-          <div className="pp-story-sections-list">
-            {page_sections.map((section, i) => (
-              <PageSection key={i} section={section} index={i} />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* ── Empty state ── */}
-      {!hasSections && !hasInsights && !ai_summary && (
+      {!hasInsights && !ai_summary && (
         <div className="pp-story-empty">
           <p className="pp-muted">No session data recorded for this participant yet.</p>
           <Link to={`/tests/${testId}`} className="pp-btn-sm" style={{ marginTop: '1rem' }}>
