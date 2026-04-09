@@ -77,8 +77,11 @@ export default function SessionReplay() {
   const replayerRef   = useRef(null)
   const cancelRef     = useRef(false)
   const pollRef       = useRef(null)
-  const loadedMsRef   = useRef(0)
-  const totalMsRef    = useRef(0)
+  const loadedMsRef        = useRef(0)
+  const totalMsRef         = useRef(0)
+  const firstEventTsRef    = useRef(0)     // epoch ms of first event — anchor for relative offset
+  const allChunksLoadedRef = useRef(false) // true once all chunks have been streamed
+  const stoppedEarlyRef    = useRef(false) // true if rrweb 'finish' fired before all chunks loaded
 
   // ── Scale calculation ─────────────────────────────────────────────────────
   const scale = (() => {
@@ -230,6 +233,11 @@ export default function SessionReplay() {
     // ──────────────────────────────────────────────────────────────────────
 
     r.on('finish', () => {
+      if (!allChunksLoadedRef.current) {
+        // rrweb exhausted currently-loaded events but more chunks are still incoming.
+        // Mark early stop — streamRemaining will resume playback once the next batch lands.
+        stoppedEarlyRef.current = true
+      }
       setIsPlaying(false)
       stopPoll()
     })
@@ -259,7 +267,24 @@ export default function SessionReplay() {
 
       loaded += batch.length
       setLoadedPct(loaded / total)
-      if (lastTs > 0) loadedMsRef.current = lastTs
+
+      // Store relative offset (subtract first event's epoch timestamp) so the
+      // buffering comparison against r.getCurrentTime() (which is also relative) is valid
+      if (lastTs > 0 && firstEventTsRef.current > 0) {
+        loadedMsRef.current = lastTs - firstEventTsRef.current
+      }
+
+      // If rrweb fired 'finish' early because it ran out of loaded events,
+      // resume playback now that a new batch has been added
+      if (stoppedEarlyRef.current) {
+        stoppedEarlyRef.current = false
+        const r = replayerRef.current
+        if (r) {
+          r.play(r.getCurrentTime())
+          setIsPlaying(true)
+          startPoll()
+        }
+      }
 
       try {
         const meta = replayer.getMetaData()
@@ -272,6 +297,7 @@ export default function SessionReplay() {
       await new Promise(resolve => setTimeout(resolve, 0))
     }
 
+    allChunksLoadedRef.current = true
     setIsBuffering(false)
     setLoadedPct(1)
   }
@@ -290,6 +316,10 @@ export default function SessionReplay() {
       setLoadedPct(0)
       setIsPlaying(false)
       setIsBuffering(false)
+      firstEventTsRef.current    = 0
+      allChunksLoadedRef.current = false
+      stoppedEarlyRef.current    = false
+      loadedMsRef.current        = 0
 
       try {
         const meta = await apiFetch(`/api/tests/${id}/replay/${tid}`)
@@ -309,6 +339,7 @@ export default function SessionReplay() {
 
           const r = initReplayer(events)
           if (!r) return
+          allChunksLoadedRef.current = true  // all events loaded upfront; 'finish' = genuine end
           r.play()
           setIsPlaying(true)
           startPoll()
@@ -333,7 +364,10 @@ export default function SessionReplay() {
         setLoadedPct(INITIAL_CHUNKS / allUrls.length)
 
         if (initialEvents.length > 0) {
-          loadedMsRef.current = initialEvents[initialEvents.length - 1].timestamp
+          // Anchor for relative-offset calculations in streamRemaining
+          firstEventTsRef.current = initialEvents[0].timestamp
+          // Store relative ms (not absolute epoch) so buffering check is valid
+          loadedMsRef.current = initialEvents[initialEvents.length - 1].timestamp - firstEventTsRef.current
         }
 
         const r = initReplayer(initialEvents)
@@ -346,6 +380,7 @@ export default function SessionReplay() {
         if (restUrls.length > 0) {
           streamRemaining(restUrls, r, INITIAL_CHUNKS)
         } else {
+          allChunksLoadedRef.current = true
           setLoadedPct(1)
         }
 

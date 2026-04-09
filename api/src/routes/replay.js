@@ -5,7 +5,7 @@ import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 const BUCKET = 'session-replays'
-const MAX_CHUNKS = 150  // hard cap: ~7.5 min at 3s flush interval
+const MAX_CHUNKS = 600  // merge cap: ~30 min at 3s / ~10 min at 1s flush interval
 const SIGNED_URL_TTL = 3600  // 1 hour
 
 function storageKey(testId, tid, partIndex) {
@@ -167,9 +167,15 @@ router.get('/tests/:testId/replay/:tid', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'Replay recording is empty or could not be listed' })
   }
 
-  // Check for pre-merged file first (fastest path)
+  // Count total part files to detect whether any existing merged.json is truncated
+  const totalPartFiles = files.filter(f => /^part_\d+\.json$/.test(f.name)).length
+  const mergedIsTruncated = totalPartFiles > MAX_CHUNKS
+
+  // Use the pre-merged file ONLY when it covers all chunks (short/normal sessions).
+  // If the session exceeded MAX_CHUNKS during the merge, merged.json is incomplete —
+  // skip it and fall through to serving all individual chunk URLs instead.
   const hasMerged = files.some(f => f.name === 'merged.json')
-  if (hasMerged) {
+  if (hasMerged && !mergedIsTruncated) {
     const { data: signed, error: signErr } = await adminDb.storage
       .from(BUCKET)
       .createSignedUrl(mergedKey(testId, tid), SIGNED_URL_TTL)
@@ -185,12 +191,12 @@ router.get('/tests/:testId/replay/:tid', requireAuth, async (req, res) => {
     }
     // Fall through to chunk URLs if signing failed
   }
+  // If mergedIsTruncated, also fall through — serve all individual chunk URLs
 
-  // No merged file — return signed URLs for individual chunks
+  // Return signed URLs for ALL uploaded chunks (no cap — full session length)
   const chunkFiles = files
     .filter(f => /^part_\d+\.json$/.test(f.name))
     .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, MAX_CHUNKS)
 
   if (chunkFiles.length === 0) {
     return res.status(404).json({ error: 'No replay chunks found' })
@@ -215,7 +221,6 @@ router.get('/tests/:testId/replay/:tid', requireAuth, async (req, res) => {
     status: replay.status,
     merged: false,
     chunks: urls,
-    truncated: chunkFiles.length === MAX_CHUNKS && files.filter(f => /^part_\d+\.json$/.test(f.name)).length > MAX_CHUNKS,
   })
 })
 
