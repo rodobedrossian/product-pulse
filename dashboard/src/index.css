@@ -1424,10 +1424,21 @@ details.pp-details[open] summary::before {
   pointer-events: none;
 }
 
+/* Idle gaps (no rrweb events) — under loaded / played bars */
+.pp-replay-progress-inactive-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  border-radius: 2px;
+  background: rgba(255, 210, 120, 0.22);
+  pointer-events: none;
+}
+
 .pp-replay-progress-loaded {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 1;
   background: rgba(255,255,255,0.2);
   border-radius: 2px;
   transform-origin: left;
@@ -1437,7 +1448,7 @@ details.pp-details[open] summary::before {
 .pp-replay-progress-played {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   background: var(--color-accent);
   border-radius: 2px;
   transform-origin: left;
@@ -1489,6 +1500,73 @@ details.pp-details[open] summary::before {
   color: rgba(255,255,255,0.4);
   flex-shrink: 0;
   font-style: italic;
+}
+
+.pp-replay-inactivity-summary {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.38);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  max-width: 5.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-replay-skip-inactivity-btn {
+  flex-shrink: 0;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid rgba(255, 200, 120, 0.35) !important;
+  border-radius: 6px;
+  background: rgba(255, 200, 120, 0.1) !important;
+  color: rgba(255, 220, 170, 0.95) !important;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.pp-replay-skip-inactivity-btn:hover:not(:disabled) {
+  background: rgba(255, 200, 120, 0.18) !important;
+  border-color: rgba(255, 200, 120, 0.55) !important;
+}
+
+.pp-replay-skip-inactivity-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pp-replay-inactivity-badge {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  padding: 0.45rem 0.65rem;
+  max-width: min(240px, 88vw);
+  border-radius: 10px;
+  background: rgba(12, 10, 8, 0.82);
+  border: 1px solid rgba(255, 200, 120, 0.28);
+  pointer-events: none;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+.pp-replay-inactivity-badge-title {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 200, 130, 0.95);
+}
+
+.pp-replay-inactivity-badge-detail {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: right;
 }
 
 .pp-replay-fullscreen-btn {

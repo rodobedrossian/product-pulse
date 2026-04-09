@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Replayer } from 'rrweb'
 import 'rrweb/dist/style.css'
@@ -8,12 +8,50 @@ const INITIAL_CHUNKS  = 5
 const STREAM_BATCH    = 10
 const POLL_MS         = 250
 const CONTROLS_H      = 52   // approx controls bar height for fullscreen calc
+/** Min gap between consecutive rrweb event timestamps to treat as “no recording” (idle). */
+const MIN_INACTIVITY_GAP_MS = 2500
 
 function fmtTime(ms) {
   if (!ms || ms < 0) return '0:00'
   const s = Math.floor(ms / 1000)
   const m = Math.floor(s / 60)
   return `${m}:${String(s % 60).padStart(2, '0')}`
+}
+
+function fmtDurationShort(ms) {
+  if (ms == null || ms < 0) return '0s'
+  if (ms < 60000) return `${Math.max(1, Math.round(ms / 1000))}s`
+  const m = Math.floor(ms / 60000)
+  const s = Math.round((ms % 60000) / 1000)
+  return s > 0 ? `${m}m ${s}s` : `${m}m`
+}
+
+/**
+ * @param {number[]} sortedTs ascending epoch ms
+ * @param {number} firstTs first event epoch (anchor)
+ * @returns {{ startRel: number, endRel: number, durationMs: number }[]}
+ */
+function buildInactivityGaps(sortedTs, firstTs) {
+  if (!sortedTs.length || !firstTs) return []
+  const gaps = []
+  for (let i = 0; i < sortedTs.length - 1; i++) {
+    const dt = sortedTs[i + 1] - sortedTs[i]
+    if (dt >= MIN_INACTIVITY_GAP_MS) {
+      gaps.push({
+        startRel: sortedTs[i] - firstTs,
+        endRel: sortedTs[i + 1] - firstTs,
+        durationMs: dt,
+      })
+    }
+  }
+  return gaps
+}
+
+function findGapAtReplayTime(t, gaps) {
+  for (const g of gaps) {
+    if (t > g.startRel && t < g.endRel) return g
+  }
+  return null
 }
 
 async function fetchChunk(url) {
@@ -82,11 +120,15 @@ export default function SessionReplay() {
   const [replayComplete, setReplayComplete] = useState(false)
   const [isBuffering, setIsBuffering] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  /** Gaps between consecutive event timestamps ≥ MIN_INACTIVITY_GAP_MS (replay-time offsets). */
+  const [inactivityGaps, setInactivityGaps] = useState([])
+  const [inactivityTotalMs, setInactivityTotalMs] = useState(0)
 
   // ── Recorded / layout state ───────────────────────────────────────────────
   const [recordedSize, setRecordedSize] = useState({ width: 1280, height: 800 })
   const recordedSizeRef = useRef({ width: 1280, height: 800 })
-  const [outerWidth, setOuterWidth]     = useState(0)
+  /** Measured .pp-replay-outer box — both axes; drives scale + centering in fullscreen. */
+  const [outerBox, setOuterBox] = useState({ width: 0, height: 0 })
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const outerRef      = useRef(null)   // outer container (visual bounds)
@@ -100,28 +142,37 @@ export default function SessionReplay() {
   const firstEventTsRef    = useRef(0)     // epoch ms of first event — anchor for relative offset
   const allChunksLoadedRef = useRef(false) // true once all chunks have been streamed
   const stoppedEarlyRef    = useRef(false) // true if rrweb 'finish' fired before all chunks loaded
+  /** Sorted epoch timestamps for all loaded events — drives inactivity gap detection. */
+  const eventTimestampsRef = useRef([])
 
   // ── Scale calculation ─────────────────────────────────────────────────────
-  const availableOuterH = isFullscreen
-    ? (outerRef.current?.clientHeight || Math.max(1, window.innerHeight - CONTROLS_H))
-    : 0
+  const ow =
+    outerBox.width ||
+    outerRef.current?.clientWidth ||
+    0
+  const ohFs =
+    isFullscreen
+      ? (outerBox.height ||
+          outerRef.current?.clientHeight ||
+          Math.max(1, window.innerHeight - CONTROLS_H))
+      : 0
 
   const scale = (() => {
-    if (!recordedSize.width || !outerWidth) return 1
+    if (!recordedSize.width || !ow) return 1
     if (isFullscreen) {
-      const scaleW = outerWidth / recordedSize.width
-      const scaleH = availableOuterH / recordedSize.height
+      const scaleW = ow / recordedSize.width
+      const scaleH = ohFs / recordedSize.height
       return Math.min(scaleW, scaleH)
     }
-    return outerWidth / recordedSize.width
+    return ow / recordedSize.width
   })()
 
   const scaledW = Math.round(recordedSize.width * scale)
   const scaledH = Math.round(recordedSize.height * scale)
 
   // Centering offsets (for fullscreen letterboxing)
-  const offsetX = isFullscreen ? Math.max(0, Math.round((outerWidth - scaledW) / 2)) : 0
-  const offsetY = isFullscreen ? Math.max(0, Math.round((availableOuterH - scaledH) / 2)) : 0
+  const offsetX = isFullscreen ? Math.max(0, Math.round((ow - scaledW) / 2)) : 0
+  const offsetY = isFullscreen ? Math.max(0, Math.round((ohFs - scaledH) / 2)) : 0
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -218,6 +269,35 @@ export default function SessionReplay() {
     }
   }
 
+  function refreshInactivityGaps() {
+    const ts = eventTimestampsRef.current
+    const t0 = firstEventTsRef.current
+    const gaps = buildInactivityGaps(ts, t0)
+    setInactivityGaps(gaps)
+    setInactivityTotalMs(gaps.reduce((s, g) => s + g.durationMs, 0))
+  }
+
+  function skipInactivityGap() {
+    const r = replayerRef.current
+    if (!r) return
+    const t = r.getCurrentTime()
+    const g = findGapAtReplayTime(t, inactivityGaps)
+    if (!g) return
+    const denom = timelineDenominatorMs()
+    const seekMax = allChunksLoadedRef.current ? denom : loadedMsRef.current
+    const targetMs = Math.max(0, Math.min(g.endRel, seekMax))
+    const wasPlaying = isPlaying
+    r.pause(targetMs)
+    setCurrentTime(targetMs)
+    if (wasPlaying) {
+      r.play(targetMs)
+      setIsPlaying(true)
+      startPoll()
+    } else {
+      setIsPlaying(false)
+    }
+  }
+
   // ── Core load logic ───────────────────────────────────────────────────────
 
   function initReplayer(events) {
@@ -227,7 +307,9 @@ export default function SessionReplay() {
     const r = new Replayer(events, {
       root:          containerRef.current,
       speed:         1,
-      skipInactive:  true,
+      // Must be false so replay clock matches raw gaps between events; we surface
+      // idle periods and let the user skip with the control (rrweb’s skip only targets “inactive” interaction gaps).
+      skipInactive:  false,
       showWarning:   false,
       triggerFocus:  false,
     })
@@ -301,11 +383,19 @@ export default function SessionReplay() {
       if (cancelRef.current) return
 
       let lastTs = 0
+      const newTs = []
       for (const chunk of results) {
         for (const event of chunk) {
           replayer.addEvent(event)
           if (event.timestamp > lastTs) lastTs = event.timestamp
+          if (Number.isFinite(event.timestamp)) newTs.push(event.timestamp)
         }
+      }
+
+      if (newTs.length) {
+        eventTimestampsRef.current.push(...newTs)
+        eventTimestampsRef.current.sort((a, b) => a - b)
+        refreshInactivityGaps()
       }
 
       loaded += batch.length
@@ -371,6 +461,9 @@ export default function SessionReplay() {
       stoppedEarlyRef.current    = false
       loadedMsRef.current        = 0
       totalMsRef.current         = 0
+      eventTimestampsRef.current = []
+      setInactivityGaps([])
+      setInactivityTotalMs(0)
 
       try {
         const meta = await apiFetch(`/api/tests/${id}/replay/${tid}`)
@@ -390,6 +483,11 @@ export default function SessionReplay() {
             firstEventTsRef.current = events[0].timestamp
             loadedMsRef.current = events[events.length - 1].timestamp - firstEventTsRef.current
             setLoadedDurationMs(loadedMsRef.current)
+            eventTimestampsRef.current = events
+              .map(e => e.timestamp)
+              .filter(Number.isFinite)
+              .sort((a, b) => a - b)
+            refreshInactivityGaps()
           }
           setChunksLoadedCount(1)
           setTotalChunksCount(1)
@@ -429,6 +527,11 @@ export default function SessionReplay() {
           // Store relative ms (not absolute epoch) so buffering check is valid
           loadedMsRef.current = initialEvents[initialEvents.length - 1].timestamp - firstEventTsRef.current
           setLoadedDurationMs(loadedMsRef.current)
+          eventTimestampsRef.current = initialEvents
+            .map(e => e.timestamp)
+            .filter(Number.isFinite)
+            .sort((a, b) => a - b)
+          refreshInactivityGaps()
         }
 
         const r = initReplayer(initialEvents)
@@ -461,36 +564,44 @@ export default function SessionReplay() {
     }
   }, [id, tid]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Measure outer container width (drives scale) ──────────────────────────
+  // ── Measure outer container (width + height) — drives scale / fullscreen fit ─
   useLayoutEffect(() => {
     const el = outerRef.current
     if (!el) return
-    // Set immediately (synchronous, before paint)
-    setOuterWidth(el.clientWidth || 0)
-    // Keep updated on resize — also directly update the inner container's
-    // transform so the scale changes without waiting for a React render cycle
+    const push = (w, h) => {
+      setOuterBox(prev =>
+        prev.width === w && prev.height === h ? prev : { width: w, height: h },
+      )
+    }
+    push(el.clientWidth || 0, el.clientHeight || 0)
     const ro = new ResizeObserver(entries => {
-      const w = entries[0]?.contentRect.width
-      if (!w) return
-      setOuterWidth(w)
-      // Direct DOM update for instant scale correction on resize
-      const inner = containerRef.current
-      if (inner && replayerRef.current) {
-        try {
-          const meta = replayerRef.current.getMetaData()
-          const rW = meta?.width || recordedSizeRef.current.width
-          if (rW > 0) inner.style.transform = `scale(${w / rW})`
-        } catch (_) {}
-      }
+      const cr = entries[0]?.contentRect
+      if (!cr) return
+      const w = Math.max(0, Math.round(cr.width))
+      const h = Math.max(0, Math.round(cr.height))
+      if (w === 0 && h === 0) return
+      push(w, h)
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Fullscreen change listener ────────────────────────────────────────────
-  useEffect(() => {
+  // Fullscreen: listen in layout phase and remeasure outer immediately so scale /
+  // offsets use the new viewport (stale width kept the replay small on the left).
+  useLayoutEffect(() => {
     function onFsChange() {
       setIsFullscreen(!!document.fullscreenElement)
+      const el = outerRef.current
+      if (!el) return
+      const apply = () => {
+        const w = el.clientWidth || 0
+        const h = el.clientHeight || 0
+        setOuterBox(prev =>
+          prev.width === w && prev.height === h ? prev : { width: w, height: h },
+        )
+      }
+      apply()
+      requestAnimationFrame(apply)
     }
     document.addEventListener('fullscreenchange', onFsChange)
     return () => document.removeEventListener('fullscreenchange', onFsChange)
@@ -512,11 +623,17 @@ export default function SessionReplay() {
   const playedPct = timelineEndMs > 0 ? Math.min(1, currentTime / timelineEndMs) : 0
   const playedVisualPct = Math.min(playedPct, loadedPct, 1)
 
+  const activeInactivityGap = useMemo(
+    () => findGapAtReplayTime(currentTime, inactivityGaps),
+    [currentTime, inactivityGaps],
+  )
+
   // ── Outer container style ─────────────────────────────────────────────────
   // Normal mode: aspect-ratio drives the height automatically
-  // Fullscreen: height fills the viewport minus the controls bar
+  // Fullscreen: .pp-replay-card:fullscreen uses flex column + flex:1 on outer — no
+  // duplicate height here (avoids wrong box vs CONTROLS_H and flex fighting).
   const outerStyle = isFullscreen
-    ? { height: `calc(100vh - ${CONTROLS_H}px)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+    ? { minHeight: 0 }
     : { aspectRatio: `${recordedSize.width} / ${recordedSize.height}` }
 
   // ── Inner container style (rrweb mounts here) ─────────────────────────────
@@ -553,6 +670,17 @@ export default function SessionReplay() {
           <div className="pp-replay-outer" ref={outerRef} style={outerStyle}>
             {/* Inner: exact recorded dimensions — rrweb Replayer mounts here */}
             <div className="pp-replay-player" ref={containerRef} style={innerStyle} />
+            {phase === 'ready' && activeInactivityGap && (
+              <div className="pp-replay-inactivity-badge" role="status" aria-live="polite">
+                <span className="pp-replay-inactivity-badge-title">Inactivity</span>
+                <span className="pp-replay-inactivity-badge-detail">
+                  Gap {fmtDurationShort(activeInactivityGap.durationMs)}
+                  {activeInactivityGap.endRel > currentTime && (
+                    <> · {fmtDurationShort(activeInactivityGap.endRel - currentTime)} left</>
+                  )}
+                </span>
+              </div>
+            )}
             {phase === 'loading' && (
               <div className="pp-replay-loader" role="status" aria-live="polite">
                 <span className="pp-replay-loader-spinner" aria-hidden />
@@ -586,6 +714,12 @@ export default function SessionReplay() {
                 {fmtTime(currentTime)} / {fmtTime(timelineEndMs)}
               </span>
 
+              {inactivityTotalMs > 0 && (
+                <span className="pp-replay-inactivity-summary" title="Time between recorded events (no DOM / input activity in the capture)">
+                  {fmtDurationShort(inactivityTotalMs)} idle
+                </span>
+              )}
+
               {/* Progress bar */}
               <div
                 className="pp-replay-progress-wrap"
@@ -597,6 +731,18 @@ export default function SessionReplay() {
                 aria-valuemax={Math.round(timelineEndMs / 1000)}
               >
                 <div className="pp-replay-progress-inner">
+                  {timelineEndMs > 0 &&
+                    inactivityGaps.map((g, i) => (
+                      <div
+                        key={`${g.startRel}-${g.endRel}-${i}`}
+                        className="pp-replay-progress-inactive-seg"
+                        style={{
+                          left: `${(g.startRel / timelineEndMs) * 100}%`,
+                          width: `${((g.endRel - g.startRel) / timelineEndMs) * 100}%`,
+                        }}
+                        aria-hidden
+                      />
+                    ))}
                   <div className="pp-replay-progress-loaded" style={{ width: `${loadedPct * 100}%` }} />
                   <div
                     className="pp-replay-progress-played"
@@ -605,6 +751,16 @@ export default function SessionReplay() {
                 </div>
                 <div className="pp-replay-progress-thumb" style={{ left: `${playedVisualPct * 100}%` }} />
               </div>
+
+              <button
+                type="button"
+                className="pp-replay-skip-inactivity-btn"
+                disabled={!activeInactivityGap}
+                onClick={skipInactivityGap}
+                title={activeInactivityGap ? 'Jump to the next recorded event' : 'Only available during idle gaps (no events captured)'}
+              >
+                Skip gap
+              </button>
 
               {/* Buffering indicator */}
               {isBuffering && (
