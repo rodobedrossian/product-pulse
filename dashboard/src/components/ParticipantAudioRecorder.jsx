@@ -162,13 +162,6 @@ export default function ParticipantAudioRecorder({ testId, participant, recordin
               >
                 Transcript
               </Link>
-              <Link
-                to={`/tests/${testId}/participants/${participant.id}/story`}
-                className="pp-transcript-link pp-story-link"
-                title="View session story"
-              >
-                ✦ Story
-              </Link>
             </li>
           ))}
         </ul>
