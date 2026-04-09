@@ -23,6 +23,18 @@ async function fetchChunk(url) {
   return Array.isArray(data) ? data : []
 }
 
+function inferRecordedSizeFromEvents(events, fallback = { width: 1280, height: 800 }) {
+  if (!Array.isArray(events)) return fallback
+  for (const e of events) {
+    const w = e?.data?.width
+    const h = e?.data?.height
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      return { width: w, height: h }
+    }
+  }
+  return fallback
+}
+
 // ── Icons (stroke uses currentColor — see .pp-replay-btn svg in CSS) ─────────
 function IconExpand() {
   return (
@@ -73,6 +85,7 @@ export default function SessionReplay() {
 
   // ── Recorded / layout state ───────────────────────────────────────────────
   const [recordedSize, setRecordedSize] = useState({ width: 1280, height: 800 })
+  const recordedSizeRef = useRef({ width: 1280, height: 800 })
   const [outerWidth, setOuterWidth]     = useState(0)
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -89,24 +102,26 @@ export default function SessionReplay() {
   const stoppedEarlyRef    = useRef(false) // true if rrweb 'finish' fired before all chunks loaded
 
   // ── Scale calculation ─────────────────────────────────────────────────────
+  const availableOuterH = isFullscreen
+    ? (outerRef.current?.clientHeight || Math.max(1, window.innerHeight - CONTROLS_H))
+    : 0
+
   const scale = (() => {
     if (!recordedSize.width || !outerWidth) return 1
     if (isFullscreen) {
       const scaleW = outerWidth / recordedSize.width
-      const scaleH = (window.innerHeight - CONTROLS_H) / recordedSize.height
+      const scaleH = availableOuterH / recordedSize.height
       return Math.min(scaleW, scaleH)
     }
     return outerWidth / recordedSize.width
   })()
 
-  const scaledW = Math.round(recordedSize.width  * scale)
+  const scaledW = Math.round(recordedSize.width * scale)
   const scaledH = Math.round(recordedSize.height * scale)
 
   // Centering offsets (for fullscreen letterboxing)
   const offsetX = isFullscreen ? Math.max(0, Math.round((outerWidth - scaledW) / 2)) : 0
-  const offsetY = isFullscreen
-    ? Math.max(0, Math.round(((window.innerHeight - CONTROLS_H) - scaledH) / 2))
-    : 0
+  const offsetY = isFullscreen ? Math.max(0, Math.round((availableOuterH - scaledH) / 2)) : 0
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -224,8 +239,9 @@ export default function SessionReplay() {
     // .replayer-wrapper. If the container has the wrong (default) size at that
     // moment, the wrapper gets a non-zero offset and only part of the recording
     // is visible. We must set the correct dimensions synchronously here.
-    let rW = recordedSize.width
-    let rH = recordedSize.height
+    const inferred = inferRecordedSizeFromEvents(events, recordedSizeRef.current)
+    let rW = inferred.width
+    let rH = inferred.height
     try {
       const meta = r.getMetaData()
       if (meta?.width > 0 && meta?.height > 0) {
@@ -255,6 +271,7 @@ export default function SessionReplay() {
       outerRef.current.style.aspectRatio = `${rW} / ${rH}`
     }
     // Sync React state (next render will write matching inline styles)
+    recordedSizeRef.current = { width: rW, height: rH }
     setRecordedSize({ width: rW, height: rH })
     // ──────────────────────────────────────────────────────────────────────
 
@@ -341,6 +358,8 @@ export default function SessionReplay() {
       setError(null)
       setCurrentTime(0)
       setTotalTime(0)
+      recordedSizeRef.current = { width: 1280, height: 800 }
+      setRecordedSize(recordedSizeRef.current)
       setLoadedDurationMs(0)
       setChunksLoadedCount(0)
       setTotalChunksCount(0)
@@ -459,7 +478,7 @@ export default function SessionReplay() {
       if (inner && replayerRef.current) {
         try {
           const meta = replayerRef.current.getMetaData()
-          const rW = meta?.width || recordedSize.width
+          const rW = meta?.width || recordedSizeRef.current.width
           if (rW > 0) inner.style.transform = `scale(${w / rW})`
         } catch (_) {}
       }

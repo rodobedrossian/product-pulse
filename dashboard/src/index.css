@@ -1335,6 +1335,11 @@ details.pp-details[open] summary::before {
    naturally place the wrapper at left:0, top:0. */
 .pp-replay-player .replayer-wrapper {
   position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  float: none !important;
+  margin: 0 !important;
+  transform-origin: top left !important;
 }
 
 /* Fullscreen: card fills viewport, outer fills remaining height */
