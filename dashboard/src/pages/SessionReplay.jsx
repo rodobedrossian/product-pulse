@@ -157,10 +157,14 @@ export default function SessionReplay() {
 
   function handleSeek(e) {
     const r = replayerRef.current
-    if (!r || !totalTime) return
+    if (!r) return
+    // Use the best available total duration — totalTime updates as chunks stream in;
+    // loadedMsRef.current is the relative ms of the last loaded event as a safety fallback
+    const effectiveTotalMs = Math.max(totalTime, loadedMsRef.current)
+    if (!effectiveTotalMs) return
     const rect = e.currentTarget.getBoundingClientRect()
     const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    const targetMs = pct * totalTime
+    const targetMs = pct * effectiveTotalMs
     setCurrentTime(targetMs)
     if (isPlaying) {
       r.play(targetMs)
@@ -286,13 +290,12 @@ export default function SessionReplay() {
         }
       }
 
-      try {
-        const meta = replayer.getMetaData()
-        if (meta?.totalTime > totalMsRef.current) {
-          totalMsRef.current = meta.totalTime
-          setTotalTime(meta.totalTime)
-        }
-      } catch (_) {}
+      // rrweb v2-alpha getMetaData().totalTime doesn't update after addEvent() calls.
+      // Calculate total duration directly from raw event timestamps instead.
+      if (loadedMsRef.current > totalMsRef.current) {
+        totalMsRef.current = loadedMsRef.current
+        setTotalTime(loadedMsRef.current)
+      }
 
       await new Promise(resolve => setTimeout(resolve, 0))
     }
@@ -436,7 +439,9 @@ export default function SessionReplay() {
   }, [])
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const playedPct = totalTime > 0 ? Math.min(1, currentTime / totalTime) : 0
+  // effectiveTotalTime grows as chunks stream in; prevents currentTime > total (clamp / >100%)
+  const effectiveTotalTime = Math.max(totalTime, currentTime)
+  const playedPct = effectiveTotalTime > 0 ? Math.min(1, currentTime / effectiveTotalTime) : 0
 
   // ── Outer container style ─────────────────────────────────────────────────
   // Normal mode: aspect-ratio drives the height automatically
@@ -509,7 +514,7 @@ export default function SessionReplay() {
 
               {/* Time */}
               <span className="pp-replay-time">
-                {fmtTime(currentTime)} / {fmtTime(totalTime || loadedMsRef.current)}
+                {fmtTime(currentTime)} / {fmtTime(effectiveTotalTime || loadedMsRef.current)}
               </span>
 
               {/* Progress bar */}
@@ -518,9 +523,9 @@ export default function SessionReplay() {
                 onClick={handleSeek}
                 role="slider"
                 aria-label="Seek"
-                aria-valuenow={Math.round(playedPct * 100)}
+                aria-valuenow={Math.round(currentTime / 1000)}
                 aria-valuemin={0}
-                aria-valuemax={100}
+                aria-valuemax={Math.round(effectiveTotalTime / 1000)}
               >
                 <div className="pp-replay-progress-inner">
                   <div className="pp-replay-progress-loaded" style={{ width: `${loadedPct * 100}%` }} />
