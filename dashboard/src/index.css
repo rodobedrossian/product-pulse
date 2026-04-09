@@ -1377,6 +1377,13 @@ details.pp-details[open] summary::before {
   transition: background 0.15s;
 }
 
+.pp-replay-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 /* Must use !important: button:hover:not(:disabled) has specificity (0,2,1)=21pts,
    which beats .pp-replay-btn:hover at (0,2,0)=20pts. */
 .pp-replay-btn:hover { background: rgba(255,255,255,0.18) !important; }
@@ -1415,6 +1422,7 @@ details.pp-details[open] summary::before {
 .pp-replay-progress-loaded {
   position: absolute;
   inset: 0;
+  z-index: 0;
   background: rgba(255,255,255,0.2);
   border-radius: 2px;
   transform-origin: left;
@@ -1424,6 +1432,7 @@ details.pp-details[open] summary::before {
 .pp-replay-progress-played {
   position: absolute;
   inset: 0;
+  z-index: 1;
   background: var(--color-accent);
   border-radius: 2px;
   transform-origin: left;

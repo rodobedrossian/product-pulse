@@ -23,11 +23,11 @@ async function fetchChunk(url) {
   return Array.isArray(data) ? data : []
 }
 
-// ── Icons (Feather-style, 24×24 viewBox, hardcoded white stroke) ──────────────
+// ── Icons (stroke uses currentColor — see .pp-replay-btn svg in CSS) ─────────
 function IconExpand() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-         stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden
+      stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 3H5a2 2 0 0 0-2 2v3" />
       <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
       <path d="M3 16v3a2 2 0 0 0 2 2h3" />
@@ -37,8 +37,8 @@ function IconExpand() {
 }
 function IconCompress() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-         stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden
+      stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 3v3a2 2 0 0 1-2 2H3" />
       <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
       <path d="M3 16h3a2 2 0 0 1 2 2v3" />
@@ -61,8 +61,13 @@ export default function SessionReplay() {
   const [isPlaying, setIsPlaying]   = useState(false)
   const [speed, setSpeed]           = useState(1)
   const [currentTime, setCurrentTime] = useState(0)   // ms
-  const [totalTime, setTotalTime]   = useState(0)      // ms
-  const [loadedPct, setLoadedPct]   = useState(0)      // 0–1
+  const [totalTime, setTotalTime]   = useState(0)      // ms (max span seen from events / meta)
+  /** Timeline ms covered by events fetched so far (matches loadedMsRef). */
+  const [loadedDurationMs, setLoadedDurationMs] = useState(0)
+  /** Chunk counts for extrapolating total duration while streaming. */
+  const [chunksLoadedCount, setChunksLoadedCount] = useState(0)
+  const [totalChunksCount, setTotalChunksCount] = useState(0)
+  const [replayComplete, setReplayComplete] = useState(false)
   const [isBuffering, setIsBuffering] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -155,21 +160,38 @@ export default function SessionReplay() {
     replayerRef.current?.setConfig({ speed: s })
   }
 
+  function timelineDenominatorMs() {
+    const loadedD = loadedMsRef.current
+    const metaTotal = Math.max(totalMsRef.current, totalTime)
+    if (allChunksLoadedRef.current) {
+      return Math.max(metaTotal, loadedD, 1)
+    }
+    const n = totalChunksCount
+    const k = Math.max(chunksLoadedCount, 1)
+    const extrapolated = n > 0 ? (loadedD * n) / k : loadedD
+    return Math.max(metaTotal, extrapolated, loadedD, currentTime, 1)
+  }
+
   function handleSeek(e) {
     const r = replayerRef.current
     if (!r) return
-    // Use the best available total duration — totalTime updates as chunks stream in;
-    // loadedMsRef.current is the relative ms of the last loaded event as a safety fallback
-    const effectiveTotalMs = Math.max(totalTime, loadedMsRef.current)
-    if (!effectiveTotalMs) return
+    const denom = timelineDenominatorMs()
+    if (denom <= 0) return
     const rect = e.currentTarget.getBoundingClientRect()
-    const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    const targetMs = pct * effectiveTotalMs
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const rawTarget = pct * denom
+    // Never seek past loaded events while chunks are still streaming (avoids rrweb thrash).
+    const seekMax = allChunksLoadedRef.current ? denom : loadedMsRef.current
+    const targetMs = Math.max(0, Math.min(rawTarget, seekMax))
+    const wasPlaying = isPlaying
+    r.pause(targetMs)
     setCurrentTime(targetMs)
-    if (isPlaying) {
+    if (wasPlaying) {
       r.play(targetMs)
+      setIsPlaying(true)
+      startPoll()
     } else {
-      r.pause(targetMs)
+      setIsPlaying(false)
     }
   }
 
@@ -270,7 +292,7 @@ export default function SessionReplay() {
       }
 
       loaded += batch.length
-      setLoadedPct(loaded / total)
+      setChunksLoadedCount(loaded)
 
       // Store relative offset (subtract first event's epoch timestamp) so the
       // buffering comparison against r.getCurrentTime() (which is also relative) is valid
@@ -297,12 +319,15 @@ export default function SessionReplay() {
         setTotalTime(loadedMsRef.current)
       }
 
+      setLoadedDurationMs(loadedMsRef.current)
+
       await new Promise(resolve => setTimeout(resolve, 0))
     }
 
     allChunksLoadedRef.current = true
+    setReplayComplete(true)
     setIsBuffering(false)
-    setLoadedPct(1)
+    setLoadedDurationMs(loadedMsRef.current)
   }
 
   // ── Main effect ───────────────────────────────────────────────────────────
@@ -316,13 +341,17 @@ export default function SessionReplay() {
       setError(null)
       setCurrentTime(0)
       setTotalTime(0)
-      setLoadedPct(0)
+      setLoadedDurationMs(0)
+      setChunksLoadedCount(0)
+      setTotalChunksCount(0)
+      setReplayComplete(false)
       setIsPlaying(false)
       setIsBuffering(false)
       firstEventTsRef.current    = 0
       allChunksLoadedRef.current = false
       stoppedEarlyRef.current    = false
       loadedMsRef.current        = 0
+      totalMsRef.current         = 0
 
       try {
         const meta = await apiFetch(`/api/tests/${id}/replay/${tid}`)
@@ -338,7 +367,14 @@ export default function SessionReplay() {
           if (cancelRef.current) return
 
           events.sort((a, b) => a.timestamp - b.timestamp)
-          setLoadedPct(1)
+          if (events.length > 0) {
+            firstEventTsRef.current = events[0].timestamp
+            loadedMsRef.current = events[events.length - 1].timestamp - firstEventTsRef.current
+            setLoadedDurationMs(loadedMsRef.current)
+          }
+          setChunksLoadedCount(1)
+          setTotalChunksCount(1)
+          setReplayComplete(true)
 
           const r = initReplayer(events)
           if (!r) return
@@ -354,6 +390,8 @@ export default function SessionReplay() {
         const allUrls = meta.chunks ?? []
         if (allUrls.length === 0) throw new Error('No replay data found')
 
+        setTotalChunksCount(allUrls.length)
+
         const initialUrls = allUrls.slice(0, INITIAL_CHUNKS)
         const restUrls    = allUrls.slice(INITIAL_CHUNKS)
 
@@ -364,13 +402,14 @@ export default function SessionReplay() {
         const initialEvents = initialResults.flat().sort((a, b) => a.timestamp - b.timestamp)
         if (initialEvents.length < 2) throw new Error('Not enough events to replay')
 
-        setLoadedPct(INITIAL_CHUNKS / allUrls.length)
+        setChunksLoadedCount(initialUrls.length)
 
         if (initialEvents.length > 0) {
           // Anchor for relative-offset calculations in streamRemaining
           firstEventTsRef.current = initialEvents[0].timestamp
           // Store relative ms (not absolute epoch) so buffering check is valid
           loadedMsRef.current = initialEvents[initialEvents.length - 1].timestamp - firstEventTsRef.current
+          setLoadedDurationMs(loadedMsRef.current)
         }
 
         const r = initReplayer(initialEvents)
@@ -384,7 +423,7 @@ export default function SessionReplay() {
           streamRemaining(restUrls, r, INITIAL_CHUNKS)
         } else {
           allChunksLoadedRef.current = true
-          setLoadedPct(1)
+          setReplayComplete(true)
         }
 
       } catch (e) {
@@ -439,9 +478,20 @@ export default function SessionReplay() {
   }, [])
 
   // ── Derived values ────────────────────────────────────────────────────────
-  // effectiveTotalTime grows as chunks stream in; prevents currentTime > total (clamp / >100%)
-  const effectiveTotalTime = Math.max(totalTime, currentTime)
-  const playedPct = effectiveTotalTime > 0 ? Math.min(1, currentTime / effectiveTotalTime) : 0
+  const timelineEndMs = (() => {
+    const loadedD = loadedDurationMs
+    const metaTotal = totalTime
+    if (replayComplete) {
+      return Math.max(metaTotal, loadedD, currentTime, 1)
+    }
+    const n = totalChunksCount
+    const k = Math.max(chunksLoadedCount, 1)
+    const extrapolated = n > 0 ? (loadedD * n) / k : loadedD
+    return Math.max(metaTotal, extrapolated, loadedD, currentTime, 1)
+  })()
+  const loadedPct = timelineEndMs > 0 ? Math.min(1, loadedDurationMs / timelineEndMs) : 0
+  const playedPct = timelineEndMs > 0 ? Math.min(1, currentTime / timelineEndMs) : 0
+  const playedVisualPct = Math.min(playedPct, loadedPct, 1)
 
   // ── Outer container style ─────────────────────────────────────────────────
   // Normal mode: aspect-ratio drives the height automatically
@@ -514,7 +564,7 @@ export default function SessionReplay() {
 
               {/* Time */}
               <span className="pp-replay-time">
-                {fmtTime(currentTime)} / {fmtTime(effectiveTotalTime || loadedMsRef.current)}
+                {fmtTime(currentTime)} / {fmtTime(timelineEndMs)}
               </span>
 
               {/* Progress bar */}
@@ -525,13 +575,16 @@ export default function SessionReplay() {
                 aria-label="Seek"
                 aria-valuenow={Math.round(currentTime / 1000)}
                 aria-valuemin={0}
-                aria-valuemax={Math.round(effectiveTotalTime / 1000)}
+                aria-valuemax={Math.round(timelineEndMs / 1000)}
               >
                 <div className="pp-replay-progress-inner">
                   <div className="pp-replay-progress-loaded" style={{ width: `${loadedPct * 100}%` }} />
-                  <div className="pp-replay-progress-played" style={{ width: `${playedPct * 100}%` }} />
+                  <div
+                    className="pp-replay-progress-played"
+                    style={{ width: `${playedVisualPct * 100}%` }}
+                  />
                 </div>
-                <div className="pp-replay-progress-thumb" style={{ left: `${playedPct * 100}%` }} />
+                <div className="pp-replay-progress-thumb" style={{ left: `${playedVisualPct * 100}%` }} />
               </div>
 
               {/* Buffering indicator */}
