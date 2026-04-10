@@ -39,6 +39,8 @@ export function createScopedDb(teamId) {
       session_replays: () => adminDb.from('session_replays'),
       profiles: () => adminDb.from('profiles'),
       teams: () => adminDb.from('teams'),
+      transcripts: () => adminDb.from('transcripts'),
+      participant_recordings: () => adminDb.from('participant_recordings'),
     }
   }
 }

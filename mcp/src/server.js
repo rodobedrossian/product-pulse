@@ -6,6 +6,7 @@ import { registerGetScenarioResults } from './tools/getScenarioResults.js'
 import { registerGetParticipantEvents } from './tools/getParticipantEvents.js'
 import { registerGetTeamInfo } from './tools/getTeamInfo.js'
 import { registerSummarizeTest } from './tools/summarizeTest.js'
+import { registerGetTranscripts } from './tools/getTranscripts.js'
 
 /**
  * Creates and configures the MCP server with all tools registered.
@@ -27,6 +28,7 @@ export function createServer(db) {
   registerGetParticipantEvents(server, db)
   registerGetTeamInfo(server, db)
   registerSummarizeTest(server, db)
+  registerGetTranscripts(server, db)
 
   return server
 }

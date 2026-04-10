@@ -14,7 +14,7 @@ export function registerGetTest(server, db) {
       await validateTestOwnership(db, test_id)
 
       // Load full test details
-      const { data: test, error } = await db.tests('id, name, test_type, prototype_url, start_event, goal_event, research_intent, created_at')
+      const { data: test, error } = await db.tests('id, name, test_type, prototype_url, start_event, goal_event, research_intent, context, created_at')
         .eq('id', test_id)
         .single()
       if (error) throw new Error(`Database error: ${error.message}`)
