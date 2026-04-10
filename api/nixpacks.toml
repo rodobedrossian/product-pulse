@@ -1,0 +1,4 @@
+# Nixpacks build config for Railway
+# ffmpeg is needed to split large audio files before sending to Whisper (25 MB limit)
+[phases.setup]
+nixPkgs = ["ffmpeg"]

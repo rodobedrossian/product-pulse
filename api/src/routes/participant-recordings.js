@@ -259,4 +259,34 @@ router.get('/:id/recordings/:recordingId/audio', requireAuth, async (req, res) =
   res.send(buf)
 })
 
+// POST /api/tests/:id/recordings/:recordingId/retranscribe
+// Re-trigger transcription for a recording that previously failed (e.g. exceeded old size limit).
+router.post('/:id/recordings/:recordingId/retranscribe', requireAuth, async (req, res) => {
+  const { id: testId, recordingId } = req.params
+
+  const test = await loadTestForTeam(testId, req.teamId)
+  if (!test) return res.status(404).json({ error: 'Test not found' })
+
+  const { data: row, error } = await adminDb
+    .from('participant_recordings')
+    .select('id, test_id, tid, audio_object_path, mime_type, byte_size')
+    .eq('id', recordingId)
+    .eq('test_id', testId)
+    .single()
+
+  if (error || !row) return res.status(404).json({ error: 'Recording not found' })
+
+  // Respond immediately — transcription runs in background
+  res.status(202).json({ message: 'Transcription started', recording_id: recordingId })
+
+  transcribeRecording({
+    id:                row.id,
+    test_id:           row.test_id,
+    tid:               row.tid,
+    audio_object_path: row.audio_object_path,
+    mime_type:         row.mime_type,
+    byte_size:         row.byte_size,
+  }).catch((err) => console.error('[retranscribe] error:', err))
+})
+
 export default router
