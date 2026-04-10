@@ -12,7 +12,7 @@ import { transcribeRecording } from '../services/transcription.js'
 
 const router = Router()
 const BUCKET = 'participant-recordings'
-const MAX_BYTES = 100 * 1024 * 1024 // 100 MB
+const MAX_BYTES = 200 * 1024 * 1024 // 200 MB (long sessions upload 20-min segments ~15 MB each)
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -156,6 +156,14 @@ router.post(
       if (!Number.isNaN(n) && n >= 0) durationMs = n
     }
 
+    // segment_index — present when the desktop app auto-splits long sessions.
+    // null means the whole recording is a single file (legacy / short sessions).
+    let segmentIndex = null
+    if (req.body?.segment_index != null && req.body.segment_index !== '') {
+      const n = parseInt(String(req.body.segment_index), 10)
+      if (!Number.isNaN(n) && n >= 0) segmentIndex = n
+    }
+
     const { error: upErr } = await adminDb.storage
       .from(BUCKET)
       .upload(objectPath, file.buffer, { contentType: mimeType, upsert: false })
@@ -176,6 +184,7 @@ router.post(
         mime_type: mimeType,
         byte_size: file.buffer.length,
         duration_ms: durationMs,
+        segment_index: segmentIndex,
         created_by: req.user?.id ?? null
       })
       .select('id, participant_id, tid, mime_type, byte_size, duration_ms, created_at')

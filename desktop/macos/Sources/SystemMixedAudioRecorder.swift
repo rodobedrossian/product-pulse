@@ -272,7 +272,9 @@ This build path:
                     AVFormatIDKey: kAudioFormatMPEG4AAC,
                     AVSampleRateKey: sampleRate,
                     AVNumberOfChannelsKey: channels,
-                    AVEncoderBitRateKey: min(256_000, 96_000 * channels)
+                    // 48 kbps/channel → 96 kbps stereo ≈ 43 MB/hr — excellent for speech,
+                    // keeps each 20-min segment well under 15 MB
+                    AVEncoderBitRateKey: min(128_000, 48_000 * channels)
                 ]
                 let input = AVAssetWriterInput(mediaType: .audio, outputSettings: settings, sourceFormatHint: hint)
                 input.expectsMediaDataInRealTime = true

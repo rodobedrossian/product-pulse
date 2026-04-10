@@ -10,7 +10,7 @@ final class RecorderModel: ObservableObject {
     @Published var apiBase: String?
     @Published var testId: String?
     @Published var participantId: String?
-    @Published var status: String = "Open a “Record with desktop app” link from the Product Pulse dashboard."
+    @Published var status: String = "Open a "Record with desktop app" link from the Product Pulse dashboard."
     @Published var isRecording = false
     @Published var isUploading = false
     @Published var isStartingCapture = false
@@ -22,8 +22,20 @@ final class RecorderModel: ObservableObject {
     private var recordStartedAt: Date?
     private var timer: Timer?
 
-    private static var recordFileURL: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("productpulse-recording.m4a")
+    // ── Segmented recording ───────────────────────────────────────────────────
+    /// Each segment is at most this many seconds.  At 96 kbps stereo an
+    /// 20-minute segment is ~14 MB — well under any Supabase file-size limit.
+    private static let SEGMENT_SECONDS: Double = 20 * 60
+
+    /// Current segment index (0-based).  Incremented each time we roll.
+    private var segmentIndex = 0
+
+    /// Background task that fires when it is time to roll to the next segment.
+    private var segmentTask: Task<Void, Never>?
+
+    private static func segmentFileURL(_ index: Int) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("productpulse-segment-\(index).m4a")
     }
 
     private init() {}
@@ -62,7 +74,11 @@ final class RecorderModel: ObservableObject {
         guard token != nil, apiBase != nil, testId != nil, participantId != nil, !isUploading else { return }
         guard sckRecorder == nil, !isStartingCapture else { return }
 
-        let url = Self.recordFileURL
+        // Reset segment state
+        segmentIndex = 0
+        (0 ..< 20).forEach { try? FileManager.default.removeItem(at: Self.segmentFileURL($0)) }
+
+        let url = Self.segmentFileURL(0)
         try? FileManager.default.removeItem(at: url)
 
         isStartingCapture = true
@@ -93,6 +109,9 @@ final class RecorderModel: ObservableObject {
             startTimer()
             status =
                 "Recording… This includes system audio (Meet, Zoom, browser) and your mic. Stop when the session ends."
+
+            // Schedule auto-roll to next segment after SEGMENT_SECONDS
+            scheduleNextRoll()
         } catch {
             sckRecorder = nil
             recordStartedAt = nil
@@ -104,8 +123,86 @@ final class RecorderModel: ObservableObject {
         }
     }
 
+    // ── Segment rolling ───────────────────────────────────────────────────────
+
+    private func scheduleNextRoll() {
+        segmentTask?.cancel()
+        segmentTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .seconds(Self.SEGMENT_SECONDS))
+            guard !Task.isCancelled, self.isRecording else { return }
+            await self.rollSegment()
+        }
+    }
+
+    /// Starts the next segment recorder, then stops+finalizes+uploads the previous
+    /// segment in the background.  The brief overlap during SCK handoff means there
+    /// is no gap in captured audio.
+    private func rollSegment() async {
+        guard let token, let apiBase, let testId, let participantId else { return }
+
+        let completedIndex = segmentIndex
+        let completedURL   = Self.segmentFileURL(completedIndex)
+        let nextIndex      = completedIndex + 1
+        let nextURL        = Self.segmentFileURL(nextIndex)
+
+        // Start the next recorder before tearing down the current one so there
+        // is no perceptible gap for the user.
+        let newRec = SystemMixedAudioRecorder(outputURL: nextURL) { [weak self] level in
+            guard let self else { return }
+            Task { @MainActor in
+                let alpha: Float = level > self.audioLevel ? 0.45 : 0.12
+                self.audioLevel = self.audioLevel * (1 - alpha) + level * alpha
+            }
+        }
+        do {
+            try await newRec.start()
+        } catch {
+            // Could not start next segment (permissions revoked, etc.) — keep recording
+            // with the current segment and try again after the next interval.
+            scheduleNextRoll()
+            return
+        }
+
+        // Atomically swap the active recorder.
+        let oldRec = sckRecorder
+        sckRecorder = newRec
+        segmentIndex = nextIndex
+        status = "Recording (segment \(nextIndex + 1))…"
+
+        // Schedule the roll after this segment's window too.
+        scheduleNextRoll()
+
+        // Finalize and upload the completed segment in the background.
+        let segIdx = completedIndex
+        Task {
+            guard let oldRec else { return }
+            do {
+                try await oldRec.stop()
+            } catch {
+                // Log but don't surface — recording continues on the new segment.
+                print("[RecorderModel] segment \(segIdx) stop error: \(error)")
+                return
+            }
+            await Self.uploadSegmentFile(
+                fileURL: completedURL,
+                token: token, apiBase: apiBase,
+                testId: testId, participantId: participantId,
+                segmentIndex: segIdx
+            )
+            try? FileManager.default.removeItem(at: completedURL)
+        }
+    }
+
+    // ── Stop & upload final segment ───────────────────────────────────────────
+
     func stopAndUpload() async {
         guard isRecording else { return }
+
+        // Cancel pending roll — we are stopping intentionally.
+        segmentTask?.cancel()
+        segmentTask = nil
+
         let started = recordStartedAt
         recordStartedAt = nil
         isRecording = false
@@ -137,7 +234,7 @@ final class RecorderModel: ObservableObject {
             return
         }
 
-        let fileURL = Self.recordFileURL
+        let fileURL = Self.segmentFileURL(segmentIndex)
         let byteSize =
             (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.intValue ?? 0
         guard byteSize > 512 else {
@@ -159,7 +256,8 @@ final class RecorderModel: ObservableObject {
                 apiBase: apiBase,
                 testId: testId,
                 participantId: participantId,
-                startedAt: started
+                startedAt: started,
+                segmentIndex: segmentIndex
             )
             status = "Upload complete. You can close this window or open another link."
             try? FileManager.default.removeItem(at: fileURL)
@@ -178,6 +276,8 @@ final class RecorderModel: ObservableObject {
             audioLevel = 0
         }
     }
+
+    // ── Timer helpers ─────────────────────────────────────────────────────────
 
     var elapsedLabel: String {
         let minutes = elapsedSeconds / 60
@@ -204,13 +304,47 @@ final class RecorderModel: ObservableObject {
         }
     }
 
+    // ── Upload helpers ────────────────────────────────────────────────────────
+
+    /// Background-segment upload (fire-and-forget, no UI state changes).
+    private static func uploadSegmentFile(
+        fileURL: URL,
+        token: String,
+        apiBase: String,
+        testId: String,
+        participantId: String,
+        segmentIndex: Int
+    ) async {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        let byteSize =
+            (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.intValue ?? 0
+        guard byteSize > 512 else { return }
+
+        do {
+            try await uploadMultipart(
+                fileURL: fileURL,
+                token: token,
+                apiBase: apiBase,
+                testId: testId,
+                participantId: participantId,
+                startedAt: nil,
+                segmentIndex: segmentIndex
+            )
+        } catch {
+            // Background segment upload failed — local file is preserved by the caller
+            // so the moderator can retry manually if needed.
+            print("[RecorderModel] background segment \(segmentIndex) upload failed: \(error)")
+        }
+    }
+
     private static func uploadMultipart(
         fileURL: URL,
         token: String,
         apiBase: String,
         testId: String,
         participantId: String,
-        startedAt: Date?
+        startedAt: Date?,
+        segmentIndex: Int
     ) async throws {
         let base = apiBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let uploadURL = URL(string: "\(base)/api/tests/\(testId)/participants/\(participantId)/recordings") else {
@@ -226,17 +360,23 @@ final class RecorderModel: ObservableObject {
         }
 
         append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"audio\"; filename=\"recording.m4a\"\r\n")
+        append("Content-Disposition: form-data; name=\"audio\"; filename=\"segment-\(segmentIndex).m4a\"\r\n")
         append("Content-Type: audio/mp4\r\n\r\n")
         body.append(data)
         append("\r\n")
 
+        // Duration of the full session (only meaningful for the final segment)
         if let startedAt {
             let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
             append("--\(boundary)\r\n")
             append("Content-Disposition: form-data; name=\"duration_ms\"\r\n\r\n")
             append("\(ms)\r\n")
         }
+
+        // Segment index — lets the API/UI order multiple clips correctly
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"segment_index\"\r\n\r\n")
+        append("\(segmentIndex)\r\n")
 
         append("--\(boundary)--\r\n")
 
