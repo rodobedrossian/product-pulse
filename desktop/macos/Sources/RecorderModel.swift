@@ -10,7 +10,7 @@ final class RecorderModel: ObservableObject {
     @Published var apiBase: String?
     @Published var testId: String?
     @Published var participantId: String?
-    @Published var status: String = "Open a "Record with desktop app" link from the Product Pulse dashboard."
+    @Published var status: String = "Open a \u{201C}Record with desktop app\u{201D} link from the Product Pulse dashboard."
     @Published var isRecording = false
     @Published var isUploading = false
     @Published var isStartingCapture = false
