@@ -2424,6 +2424,56 @@ button.pp-btn-danger:hover:not(:disabled) {
   background: var(--color-danger-bg);
 }
 
+/* ─── xs size variant ─────────────────────────────────────────────────────────── */
+button.pp-btn-xs {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  border-radius: 5px;
+}
+
+/* Danger outline — used for "Stop tracking" */
+button.pp-btn-danger-outline {
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+  background: transparent;
+}
+button.pp-btn-danger-outline:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+}
+
+/* Secondary outline — used for "Resume" */
+button.pp-btn-secondary {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  background: transparent;
+}
+button.pp-btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+/* ─── Tracking stopped badge ──────────────────────────────────────────────────── */
+.pp-tracking-stopped-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem 0.15rem 0.4rem;
+}
+
+.pp-tracking-stopped-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
 button.pp-btn-sm.pp-btn-delete-icon {
   display: inline-flex;
   align-items: center;

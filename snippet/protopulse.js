@@ -315,6 +315,22 @@
   // calls above — this is intentional.
 
   function beginTracking(resolvedTestId, resolvedTid, propagateParams) {
+    // ── Stop sentinel (MPA support) ─────────────────────────────────────────────
+    // If the moderator stopped tracking and the participant navigates to a new page
+    // (e.g. in a multi-page Figma/Framer prototype), sessionStorage persists the
+    // stopped state so the tracker never restarts on the new page load.
+    var _stoppedKey = '__pp_stopped_' + resolvedTestId + '_' + resolvedTid
+    try { if (sessionStorage.getItem(_stoppedKey)) return } catch (e) {}
+
+    var _trackingStopped = false
+
+    function stopTracking() {
+      if (_trackingStopped) return
+      _trackingStopped = true
+      try { sessionStorage.setItem(_stoppedKey, '1') } catch (e) {}
+      if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
+    }
+
     try {
       sessionStorage.setItem('__pp_tid', resolvedTid)
       sessionStorage.setItem('__pp_test_id', resolvedTestId)
@@ -348,6 +364,7 @@
     // request with the screenshot attached once html2canvas finishes.
     // coords (optional): { x, y, vw, vh } — normalised pointer position
     function send(type, selector, url, metadata, coords) {
+      if (_trackingStopped) return
       var cleanedUrl = cleanUrl(url || location.href)
       var ts = new Date().toISOString()
       var payload = {
@@ -368,6 +385,10 @@
 
       // Capture screenshot in parallel; send event data with it in a single request.
       // If the lib isn't loaded yet, send without screenshot so events aren't delayed.
+      function handleEventsResponse(r) {
+        if (r && r.ok) r.json().then(function (d) { if (d && d.stop) stopTracking() }).catch(function () {})
+      }
+
       if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
         window.__ppCaptureScreenshot().then(function (dataUrl) {
           if (dataUrl) payload.screenshot = dataUrl
@@ -375,13 +396,13 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-          }).catch(function () {})
+          }).then(handleEventsResponse).catch(function () {})
         }).catch(function () {
           fetch(API_URL + '/api/events', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-          }).catch(function () {})
+          }).then(handleEventsResponse).catch(function () {})
         })
       } else {
         fetch(API_URL + '/api/events', {
@@ -389,7 +410,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
           keepalive: true
-        }).catch(function () {})
+        }).then(handleEventsResponse).catch(function () {})
       }
 
       // Notify overlay (non-blocking)
@@ -550,6 +571,7 @@
     var s = document.createElement('script')
     s.src = API_URL + '/snippet/replay-bundle.js'
     s.onload = function () {
+      if (_trackingStopped) return // stopped before bundle finished loading
       if (typeof window.__ppStartReplay === 'function') {
         window.__ppStartReplay({ apiUrl: API_URL, tid: resolvedTid, testId: resolvedTestId })
       }
@@ -780,10 +802,15 @@
         }, 2000)
       }
 
-      // Fetch scenario tasks and boot the overlay
-      fetch(API_URL + '/api/tests/' + resolvedTestId + '/tasks')
+      // Fetch scenario tasks and boot the overlay.
+      // Pass ?tid= so the server can signal stop: true if the moderator
+      // has already halted tracking for this participant.
+      fetch(API_URL + '/api/tests/' + resolvedTestId + '/tasks?tid=' + encodeURIComponent(resolvedTid))
         .then(function (r) { return r.json() })
         .then(function (data) {
+          // Moderator stopped tracking before participant opened the URL
+          if (data && data.stop) { stopTracking(); return }
+
           // ── Single-goal: stop replay the moment the goal fires ────────────────
           if (data.test_type === 'single' && data.goal_event && data.goal_event.type) {
             _ppOnEvent = function (type, sel, url) {

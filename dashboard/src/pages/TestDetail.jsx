@@ -403,6 +403,27 @@ export default function TestDetail() {
   const [recordingsByParticipant, setRecordingsByParticipant] = useState({})
   const [desktopMac, setDesktopMac] = useState(null)
   const [desktopWin, setDesktopWin] = useState(null)
+  const [stoppingParticipant, setStoppingParticipant] = useState(new Set())
+
+  async function handleToggleTracking(p) {
+    const stopping = !p.tracking_stopped_at
+    setStoppingParticipant((prev) => new Set([...prev, p.id]))
+    try {
+      await apiFetch(`/api/tests/${id}/participants/${p.id}/tracking`, {
+        method: 'PATCH',
+        body: JSON.stringify({ stopped: stopping }),
+      })
+      await loadTest()
+    } catch (err) {
+      alert('Failed to update tracking: ' + (err.message || 'Unknown error'))
+    } finally {
+      setStoppingParticipant((prev) => {
+        const next = new Set(prev)
+        next.delete(p.id)
+        return next
+      })
+    }
+  }
 
   function loadTest() {
     return apiFetch(`/api/tests/${id}`)
@@ -1276,6 +1297,28 @@ export default function TestDetail() {
                                   Testing link
                                 </a>
                                 <CopyButton text={participantLink} label="Copy link" />
+                                {p.tracking_stopped_at ? (
+                                  <span className="pp-tracking-stopped-badge">
+                                    <span className="pp-tracking-stopped-dot" />
+                                    Tracking stopped
+                                    <button
+                                      className="pp-btn pp-btn-xs pp-btn-secondary"
+                                      onClick={() => handleToggleTracking(p)}
+                                      disabled={stoppingParticipant.has(p.id)}
+                                    >
+                                      Resume
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    className="pp-btn pp-btn-xs pp-btn-danger-outline"
+                                    onClick={() => handleToggleTracking(p)}
+                                    disabled={stoppingParticipant.has(p.id)}
+                                    title="Stop capturing events and replays for this participant"
+                                  >
+                                    Stop tracking
+                                  </button>
+                                )}
                                 <ParticipantAudioRecorder
                                   testId={id}
                                   participant={p}

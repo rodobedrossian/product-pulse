@@ -158,8 +158,12 @@ router.get('/:id/snippet.js', (req, res) => {
 
 // GET /api/tests/:id/tasks — public endpoint for participant overlay
 // Uses adminDb to bypass RLS — this is intentionally public (snippet calls it from any domain)
+// Optional ?tid= query param: if supplied and that participant's tracking is stopped,
+// returns { stop: true } so the tracker never starts capturing.
 router.get('/:id/tasks', async (req, res) => {
   const { id } = req.params
+  const { tid } = req.query
+
   const { data: test } = await adminDb
     .from('tests')
     .select('test_type, goal_event')
@@ -167,6 +171,21 @@ router.get('/:id/tasks', async (req, res) => {
     .single()
 
   if (!test) return res.status(404).json({ error: 'Test not found' })
+
+  // If a specific participant tid is provided, check whether the moderator
+  // has stopped tracking for them before we bother loading anything else.
+  if (tid) {
+    const { data: p } = await adminDb
+      .from('participants')
+      .select('tracking_stopped_at')
+      .eq('tid', tid)
+      .eq('test_id', id)
+      .maybeSingle()
+
+    if (p?.tracking_stopped_at) {
+      return res.json({ test_type: test.test_type, goal_event: test.goal_event, steps: [], stop: true })
+    }
+  }
 
   let steps = []
   if (test.test_type === 'scenario') {

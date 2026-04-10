@@ -47,6 +47,38 @@ router.post('/:id/participants', async (req, res) => {
   res.status(201).json({ ...participant, link })
 })
 
+// PATCH /api/tests/:testId/participants/:participantId/tracking — stop or resume event capture
+// Body: { stopped: true } to halt, { stopped: false } to resume.
+// Moderator only — requires auth.
+router.patch('/:testId/participants/:participantId/tracking', requireAuth, async (req, res) => {
+  const { testId, participantId } = req.params
+  const { stopped } = req.body
+
+  if (typeof stopped !== 'boolean') {
+    return res.status(400).json({ error: '"stopped" must be a boolean' })
+  }
+
+  // Verify the test belongs to this team
+  let testQuery = db.from('tests').select('id').eq('id', testId)
+  if (req.teamId) testQuery = testQuery.eq('team_id', req.teamId)
+  const { data: test } = await testQuery.single()
+  if (!test) return res.status(404).json({ error: 'Test not found' })
+
+  const tracking_stopped_at = stopped ? new Date().toISOString() : null
+
+  const { data: updated, error } = await db
+    .from('participants')
+    .update({ tracking_stopped_at })
+    .eq('id', participantId)
+    .eq('test_id', testId)
+    .select('id, tid, name, tracking_stopped_at')
+    .single()
+
+  if (error || !updated) return res.status(404).json({ error: 'Participant not found' })
+
+  res.json(updated)
+})
+
 // GET /api/tests/:id/results — results per participant (protected)
 router.get('/:id/results', requireAuth, async (req, res) => {
   const { id } = req.params

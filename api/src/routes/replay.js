@@ -24,15 +24,20 @@ router.post('/replay/chunk', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: tid, test_id, part_index, events' })
   }
 
-  // Validate participant
+  // Validate participant and check tracking status in one query
   const { data: participant } = await db
     .from('participants')
-    .select('id')
+    .select('id, tracking_stopped_at')
     .eq('tid', tid)
     .eq('test_id', test_id)
     .single()
 
   if (!participant) return res.status(404).json({ error: 'Participant not found' })
+
+  // If moderator stopped tracking, signal the replay bundle to halt
+  if (participant.tracking_stopped_at) {
+    return res.status(200).json({ stop: true })
+  }
 
   // Upload chunk to Storage
   const key = storageKey(test_id, tid, part_index)

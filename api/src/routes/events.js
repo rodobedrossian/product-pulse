@@ -30,6 +30,21 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: tid, test_id, type, timestamp' })
   }
 
+  // Check if moderator has stopped tracking for this participant.
+  // This lookup is done up-front (before event insert) so stopped sessions
+  // are rejected cleanly without writing noise data to the DB.
+  const { data: participant } = await adminDb
+    .from('participants')
+    .select('id, tracking_stopped_at')
+    .eq('tid', tid)
+    .eq('test_id', test_id)
+    .maybeSingle()
+
+  if (participant?.tracking_stopped_at) {
+    // Signal the tracker to halt all further capture.
+    return res.status(200).json({ stop: true })
+  }
+
   // Insert event (return id so we can link the screenshot)
   const { data: inserted, error } = await db
     .from('events')
@@ -40,8 +55,10 @@ router.post('/', async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message })
 
-  // Respond immediately — screenshot upload + goal detection run async
-  res.status(204).end()
+  // Respond immediately — screenshot upload + goal detection run async.
+  // Changed from 204 (no body) to 200 JSON so we can send control signals
+  // (e.g. { stop: true }) to the tracker when needed.
+  res.status(200).json({})
 
   // ─── Screenshot upload (fire-and-forget) ───────────────────────────────────
   if (screenshot && inserted?.id) {
@@ -137,13 +154,6 @@ router.post('/', async (req, res) => {
       const goalTs = new Date(timestamp).getTime()
       const time_to_complete_ms = stepStartTs ? goalTs - stepStartTs : null
 
-      const { data: participant } = await db
-        .from('participants')
-        .select('id')
-        .eq('tid', tid)
-        .eq('test_id', test_id)
-        .single()
-
       await db.from('step_results').upsert({
         test_id,
         step_id: step.id,
@@ -200,12 +210,6 @@ router.post('/', async (req, res) => {
     .select('id', { count: 'exact', head: true })
     .eq('tid', tid)
     .eq('test_id', test_id)
-
-  const { data: participant } = await db
-    .from('participants')
-    .select('id')
-    .eq('tid', tid)
-    .single()
 
   const completedAt = new Date().toISOString()
 
