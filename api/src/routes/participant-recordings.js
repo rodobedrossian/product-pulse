@@ -12,7 +12,7 @@ import { transcribeRecording } from '../services/transcription.js'
 
 const router = Router()
 const BUCKET = 'participant-recordings'
-const MAX_BYTES = 200 * 1024 * 1024 // 200 MB (long sessions upload 20-min segments ~15 MB each)
+const MAX_BYTES = 50 * 1024 * 1024 // 50 MB — segments are ~15-20 MB; 200 MB was causing OOM on Railway (512 MB container)
 
 const upload = multer({
   storage: multer.memoryStorage(),

@@ -139,23 +139,30 @@ async function transcribeBuffer(buffer, ext, mimeType) {
     await (await import('fs/promises')).mkdir(workDir, { recursive: true })
     await writeFile(inputPath, buffer)
 
-    // Determine how many chunks we need
+    // Determine how many chunks we need — capture size before freeing
+    const originalBytes = buffer.length
+    // Free the in-memory buffer now that it's on disk; GC can reclaim it
+    // before we start loading chunk buffers below.
+    buffer = null
+
     const totalSec    = await probeDuration(inputPath)
-    const chunksCount = Math.ceil(buffer.length / WHISPER_LIMIT)
+    const chunksCount = Math.ceil(originalBytes / WHISPER_LIMIT)
     const segSec      = Math.min(CHUNK_TARGET_SEC, Math.ceil(totalSec / chunksCount))
 
-    console.log(`[transcription] splitting ${Math.round(buffer.length / 1024 / 1024)} MB / ${Math.round(totalSec)}s into ~${segSec}s segments`)
+    console.log(`[transcription] splitting ${Math.round(originalBytes / 1024 / 1024)} MB / ${Math.round(totalSec)}s into ~${segSec}s segments`)
 
     const segments = await splitAudio(inputPath, workDir, segSec)
     console.log(`[transcription] created ${segments.length} segments`)
 
-    const chunks = await Promise.all(
-      segments.map(async ({ path, startSec }) => {
-        const buf    = await readFile(path)
-        const result = await whisperTranscribe(buf, `seg.m4a`, mimeType)
-        return { result, startSec }
-      })
-    )
+    // Process chunks sequentially so only one chunk buffer lives in RAM at a time.
+    // (Promise.all would load all chunks simultaneously, exhausting memory on
+    // large recordings split into multiple segments.)
+    const chunks = []
+    for (const { path, startSec } of segments) {
+      const buf    = await readFile(path)
+      const result = await whisperTranscribe(buf, `seg.m4a`, mimeType)
+      chunks.push({ result, startSec })
+    }
 
     return mergeResults(chunks)
 
