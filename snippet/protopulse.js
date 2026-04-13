@@ -2,6 +2,11 @@
   // --- Configuration ---
   var cfg = window.ProtoPulse || {}
   var API_URL = (cfg.apiUrl || '__PRODUCT_PULSE_API_URL__').replace(/\/$/, '')
+  // After this many ms with no tracked interaction, stop replay + event capture.
+  // New observational sessions get a fresh tid when the user returns; directed (URL tid) resumes the same tid.
+  // Override: window.ProtoPulse = { ..., sessionIdleMs: 5 * 60 * 1000 }
+  var SESSION_IDLE_MS =
+    typeof cfg.sessionIdleMs === 'number' && cfg.sessionIdleMs > 0 ? cfg.sessionIdleMs : 3 * 60 * 1000
 
   // --- Read tracking params ---
   var params = new URLSearchParams(location.search)
@@ -239,7 +244,6 @@
   var OBS_LS_PREFIX  = '__pp_tk_'    // localStorage: persistent tester key
   var OBS_TID_PREFIX = '__pp_otid_'  // sessionStorage: session tid
   var OBS_TS_PREFIX  = '__pp_ots_'   // sessionStorage: last-activity timestamp
-  var INACTIVITY_MS  = 30 * 60 * 1000  // 30 minutes
 
   function detectBrowser(ua) {
     if (/Edg\//i.test(ua))                                    return 'Edge '    + ((ua.match(/Edg\/(\d+)/)      || [])[1] || '')
@@ -260,7 +264,7 @@
       try { localStorage.setItem(lsKey, testerKey) } catch (e) {}
     }
 
-    // 2. Session boundary: reuse session if active within 30 min
+    // 2. Session boundary: reuse session if last interaction within SESSION_IDLE_MS (default 3 min)
     var ssKey = OBS_TID_PREFIX + resolvedTestId
     var tsKey = OBS_TS_PREFIX  + resolvedTestId
     var existingTid = null
@@ -270,7 +274,7 @@
       lastTs = parseInt(sessionStorage.getItem(tsKey) || '0', 10)
     } catch (e) {}
 
-    if (existingTid && (Date.now() - lastTs <= INACTIVITY_MS)) {
+    if (existingTid && (Date.now() - lastTs <= SESSION_IDLE_MS)) {
       // Resume existing session — start tracking immediately, no API call needed
       try { sessionStorage.setItem(tsKey, String(Date.now())) } catch (e) {}
       beginTracking(resolvedTestId, existingTid, false)
@@ -323,16 +327,99 @@
     try { if (sessionStorage.getItem(_stoppedKey)) return } catch (e) {}
 
     var _trackingStopped = false
+    var liveTid = resolvedTid
+    var lastActivityAt = Date.now()
+    var idlePaused = false
+    var idleCheckIntervalId = null
+
+    function noteActivity() {
+      lastActivityAt = Date.now()
+    }
+
+    function resumeAfterIdle() {
+      if (!idlePaused) return
+      idlePaused = false
+      noteActivity()
+      if (!propagateParams) {
+        var newTid = 'obs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10)
+        liveTid = newTid
+        try {
+          sessionStorage.setItem('__pp_otid_' + resolvedTestId, newTid)
+          sessionStorage.setItem('__pp_ots_' + resolvedTestId, String(Date.now()))
+          sessionStorage.setItem('__pp_tid', newTid)
+        } catch (e) {}
+        var lsKey = OBS_LS_PREFIX + resolvedTestId
+        var testerKey = null
+        try {
+          testerKey = localStorage.getItem(lsKey)
+        } catch (e) {}
+        var ua = navigator.userAgent
+        fetch(API_URL + '/api/tests/' + resolvedTestId + '/auto-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tid: newTid,
+            tester_key: testerKey || '',
+            referrer: document.referrer || '',
+            browser: detectBrowser(ua),
+            device_type: /Mobi|Android/i.test(ua) ? 'mobile' : /Tablet|iPad/i.test(ua) ? 'tablet' : 'desktop'
+          })
+        }).catch(function () {})
+      }
+      if (typeof window.__ppStartReplay === 'function') {
+        window.__ppStartReplay({ apiUrl: API_URL, tid: liveTid, testId: resolvedTestId })
+      } else {
+        var sResume = document.createElement('script')
+        sResume.src = API_URL + '/snippet/replay-bundle.js'
+        sResume.onload = function () {
+          if (typeof window.__ppStartReplay === 'function') {
+            window.__ppStartReplay({ apiUrl: API_URL, tid: liveTid, testId: resolvedTestId })
+          }
+        }
+        document.head.appendChild(sResume)
+      }
+    }
+
+    function pauseForIdle() {
+      if (idlePaused || _trackingStopped) return
+      idlePaused = true
+      if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
+      if (!propagateParams) {
+        try {
+          sessionStorage.removeItem('__pp_otid_' + resolvedTestId)
+          sessionStorage.removeItem('__pp_ots_' + resolvedTestId)
+        } catch (e) {}
+      }
+    }
+
+    idleCheckIntervalId = setInterval(function () {
+      if (_trackingStopped || idlePaused) return
+      if (Date.now() - lastActivityAt < SESSION_IDLE_MS) return
+      pauseForIdle()
+    }, 10000)
+
+    document.addEventListener(
+      'keydown',
+      function () {
+        if (!idlePaused || _trackingStopped) return
+        resumeAfterIdle()
+      },
+      true
+    )
 
     function stopTracking() {
       if (_trackingStopped) return
       _trackingStopped = true
+      if (idleCheckIntervalId) {
+        clearInterval(idleCheckIntervalId)
+        idleCheckIntervalId = null
+      }
       try { sessionStorage.setItem(_stoppedKey, '1') } catch (e) {}
       if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
     }
 
     try {
-      sessionStorage.setItem('__pp_tid', resolvedTid)
+      sessionStorage.setItem('__pp_tid', liveTid)
       sessionStorage.setItem('__pp_test_id', resolvedTestId)
     } catch (e) {}
 
@@ -364,11 +451,14 @@
     // request with the screenshot attached once html2canvas finishes.
     // coords (optional): { x, y, vw, vh } — normalised pointer position
     function send(type, selector, url, metadata, coords) {
+      if (idlePaused && type !== 'mousemove_batch') resumeAfterIdle()
       if (_trackingStopped) return
+      if (idlePaused) return
+      noteActivity()
       var cleanedUrl = cleanUrl(url || location.href)
       var ts = new Date().toISOString()
       var payload = {
-        tid: resolvedTid,
+        tid: liveTid,
         test_id: resolvedTestId,
         type: type,
         selector: selector || null,
@@ -460,7 +550,11 @@
         })
       })
       function flushMoves() {
-        if (!_moveBuf.length || !resolvedTid) return
+        if (!_moveBuf.length || !liveTid) return
+        if (idlePaused) {
+          _moveBuf.length = 0
+          return
+        }
         var pts = _moveBuf.splice(0)
         send('mousemove_batch', null, location.href, { points: pts },
              { vw: window.innerWidth, vh: window.innerHeight })
@@ -573,7 +667,7 @@
     s.onload = function () {
       if (_trackingStopped) return // stopped before bundle finished loading
       if (typeof window.__ppStartReplay === 'function') {
-        window.__ppStartReplay({ apiUrl: API_URL, tid: resolvedTid, testId: resolvedTestId })
+        window.__ppStartReplay({ apiUrl: API_URL, tid: liveTid, testId: resolvedTestId })
       }
     }
     document.head.appendChild(s)
@@ -805,7 +899,7 @@
       // Fetch scenario tasks and boot the overlay.
       // Pass ?tid= so the server can signal stop: true if the moderator
       // has already halted tracking for this participant.
-      fetch(API_URL + '/api/tests/' + resolvedTestId + '/tasks?tid=' + encodeURIComponent(resolvedTid))
+      fetch(API_URL + '/api/tests/' + resolvedTestId + '/tasks?tid=' + encodeURIComponent(liveTid))
         .then(function (r) { return r.json() })
         .then(function (data) {
           // Moderator stopped tracking before participant opened the URL

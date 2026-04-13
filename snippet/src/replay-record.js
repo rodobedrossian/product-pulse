@@ -7,6 +7,11 @@ import { record } from 'rrweb'
  * @param {{ apiUrl: string, tid: string, testId: string }} config
  */
 window.__ppStartReplay = function (config) {
+  if (typeof window.__ppReplayTeardown === 'function') {
+    window.__ppReplayTeardown()
+    window.__ppReplayTeardown = null
+  }
+
   var apiUrl = config.apiUrl
   var tid = config.tid
   var testId = config.testId
@@ -72,6 +77,11 @@ window.__ppStartReplay = function (config) {
   function stop() {
     if (stopped) return
     stopped = true
+    if (typeof window.__ppReplayTeardown === 'function') {
+      window.__ppReplayTeardown()
+      window.__ppReplayTeardown = null
+    }
+    if (typeof stopRecording === 'function') stopRecording()
     clearInterval(flushInterval)
     flushFinal()
     fetch(apiUrl + '/api/replay/complete', {
@@ -85,13 +95,14 @@ window.__ppStartReplay = function (config) {
   // Expose stop so the task overlay can call it when all goals are met
   window.__ppStopReplay = stop
 
-  record({
+  var stopRecording = record({
     emit: function (event) {
+      if (stopped) return
       buffer.push(event)
       if (estimatedSize() >= FLUSH_SIZE_BYTES) flush(false)
     },
     maskAllInputs: true,
-    // Full re-snapshot every 10 s — keeps SPA replays correct across route changes
+    // Full re-snapshot every 10s for SPA correctness; protopulse idle timeout stops rrweb so idle tabs do not record hours of silence.
     checkoutEveryNms: 10000,
     slimDOMOptions: {
       script: true,
@@ -106,12 +117,21 @@ window.__ppStartReplay = function (config) {
     }
   })
 
-  // Flush on tab hide (user may return — don't stop, just save)
-  document.addEventListener('visibilitychange', function () {
+  function onVisibilityChange() {
     if (document.visibilityState === 'hidden') flush(true)
-  })
+  }
 
-  // Stop (flush + complete) on actual page unload
-  window.addEventListener('pagehide', stop)
-  window.addEventListener('beforeunload', stop)
+  function onUnload() {
+    stop()
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('pagehide', onUnload)
+  window.addEventListener('beforeunload', onUnload)
+
+  window.__ppReplayTeardown = function () {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+    window.removeEventListener('pagehide', onUnload)
+    window.removeEventListener('beforeunload', onUnload)
+  }
 }
