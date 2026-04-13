@@ -403,7 +403,7 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
     adminDb
       .from('events')
       .select(
-        'id, type, x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, url, metadata, screenshot_object_path, timestamp'
+        'id, type, x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, scroll_y, url, metadata, screenshot_object_path, timestamp'
       )
       .eq('test_id', id)
       .in('type', ['click', 'mousemove_batch'])
@@ -432,7 +432,9 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
         moves_doc: [],
         doc_h_px_values: [],
         doc_w_px_values: [],
-        background: null
+        background: null,
+        // Scroll-section tiles: one screenshot per scroll band for document-mode background
+        screenshotBands: new Map() // band_index → { path, scroll_y, vh }
       })
     }
     const page = pageMap.get(path)
@@ -444,9 +446,27 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
         if (ev.doc_h_px != null) page.doc_h_px_values.push(ev.doc_h_px)
         if (ev.doc_w_px != null) page.doc_w_px_values.push(ev.doc_w_px)
       }
-      // Use the first screenshot captured on this page as the background image
+      // Use the first screenshot captured on this page as the viewport-mode background
       if (!page.background && ev.screenshot_object_path) {
         page.background = ev.screenshot_object_path
+      }
+      // Collect scroll-section screenshots for document-mode tiling.
+      // Derive scroll_y from stored column, or from doc coords: scrollY ≈ doc_y*doc_h - y*vh
+      if (ev.screenshot_object_path && ev.vh) {
+        let scrollY = ev.scroll_y
+        if (scrollY == null && ev.doc_y != null && ev.doc_h_px && ev.y != null) {
+          scrollY = Math.round(ev.doc_y * ev.doc_h_px - ev.y * ev.vh)
+        }
+        if (scrollY != null && scrollY >= 0) {
+          const band = Math.floor(scrollY / ev.vh)
+          if (!page.screenshotBands.has(band)) {
+            page.screenshotBands.set(band, {
+              path: ev.screenshot_object_path,
+              scroll_y: scrollY,
+              vh: ev.vh
+            })
+          }
+        }
       }
     }
 
@@ -459,22 +479,49 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
           if (pt.dw != null) page.doc_w_px_values.push(pt.dw)
         }
       }
+      // Mousemove batches also capture screenshots — use them for tiling
+      if (ev.screenshot_object_path && ev.vh && ev.scroll_y != null && ev.scroll_y >= 0) {
+        const band = Math.floor(ev.scroll_y / ev.vh)
+        if (!page.screenshotBands.has(band)) {
+          page.screenshotBands.set(band, {
+            path: ev.screenshot_object_path,
+            scroll_y: ev.scroll_y,
+            vh: ev.vh
+          })
+        }
+      }
     }
   }
 
-  const pages = Array.from(pageMap.values()).map((p) => ({
-    path: p.path,
-    url: p.url,
-    click_count: p.clicks.length,
-    move_count: p.moves.length,
-    clicks: p.clicks,
-    moves: p.moves,
-    clicks_doc: p.clicks_doc,
-    moves_doc: p.moves_doc,
-    max_doc_h_px: medianValue(p.doc_h_px_values),
-    max_doc_w_px: medianValue(p.doc_w_px_values),
-    background_path: p.background ?? null
-  }))
+  const pages = Array.from(pageMap.values()).map((p) => {
+    const docH = medianValue(p.doc_h_px_values)
+    const docW = medianValue(p.doc_w_px_values)
+
+    // Build sorted tile array from scroll-section screenshots
+    const tiles = Array.from(p.screenshotBands.values())
+      .sort((a, b) => a.scroll_y - b.scroll_y)
+      .slice(0, 15) // cap to avoid massive payloads
+      .map((t) => ({
+        path: t.path,
+        scroll_y_frac: docH ? t.scroll_y / docH : 0,
+        height_frac: docH ? t.vh / docH : 1
+      }))
+
+    return {
+      path: p.path,
+      url: p.url,
+      click_count: p.clicks.length,
+      move_count: p.moves.length,
+      clicks: p.clicks,
+      moves: p.moves,
+      clicks_doc: p.clicks_doc,
+      moves_doc: p.moves_doc,
+      max_doc_h_px: docH,
+      max_doc_w_px: docW,
+      background_path: p.background ?? null,
+      background_tiles: tiles.length > 0 ? tiles : null
+    }
+  })
 
   // Sort by total activity descending
   pages.sort((a, b) => (b.click_count + b.move_count) - (a.click_count + a.move_count))

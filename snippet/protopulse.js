@@ -466,6 +466,9 @@
         metadata: metadata || null,
         timestamp: ts
       }
+      // Always include scroll offset so screenshot tiles can be positioned in document mode
+      payload.scroll_y = Math.round(window.scrollY || 0)
+
       if (coords) {
         payload.x  = coords.x
         payload.y  = coords.y

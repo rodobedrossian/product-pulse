@@ -235,6 +235,7 @@ export default function Heatmap() {
   const [selected, setSelected] = useState(null)
   const [mode, setMode] = useState('clicks')
   const [bgUrl, setBgUrl] = useState(null)
+  const [tileUrls, setTileUrls] = useState([]) // [{ url, scroll_y_frac, height_frac }]
 
   const [spread, setSpread] = useState(DEFAULT_SPREAD)
   const [intensity, setIntensity] = useState(DEFAULT_INTENSITY)
@@ -284,6 +285,31 @@ export default function Heatmap() {
       .then((b) => (b ? setBgUrl(URL.createObjectURL(b)) : null))
       .catch(() => {})
   }, [selected?.background_path, id])
+
+  // Load scroll-section background tiles for document mode
+  useEffect(() => {
+    // Revoke old tile URLs
+    tileUrls.forEach((t) => { if (t.url) URL.revokeObjectURL(t.url) })
+    setTileUrls([])
+    const tiles = selected?.background_tiles
+    if (!tiles?.length) return
+    const auth = { Authorization: `Bearer ${localStorage.getItem('pp_token') || ''}` }
+    let cancelled = false
+    Promise.all(
+      tiles.map((tile) => {
+        const parts = tile.path.split('/')
+        const eventId = (parts[2] || '').split('.')[0]
+        if (!eventId) return Promise.resolve(null)
+        return fetch(`${API_BASE}/api/tests/${id}/events/${eventId}/screenshot`, { headers: auth })
+          .then((r) => (r.ok ? r.blob() : null))
+          .then((b) => b ? { url: URL.createObjectURL(b), scroll_y_frac: tile.scroll_y_frac, height_frac: tile.height_frac } : null)
+          .catch(() => null)
+      })
+    ).then((results) => {
+      if (!cancelled) setTileUrls(results.filter(Boolean))
+    })
+    return () => { cancelled = true }
+  }, [selected?.background_tiles, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
@@ -528,14 +554,30 @@ export default function Heatmap() {
               className={`pp-heatmap-canvas-wrap${space === 'document' ? ' pp-heatmap-canvas-wrap--document' : ''}`}
               ref={wrapRef}
             >
-              {bgUrl && (
+              {space === 'document' && tileUrls.length > 0 ? (
+                /* Document mode: tile viewport screenshots at their scroll positions */
+                tileUrls.map((tile, i) => (
+                  <img
+                    key={i}
+                    src={tile.url}
+                    alt=""
+                    className="pp-heatmap-tile"
+                    style={{
+                      top: `${(tile.scroll_y_frac * 100).toFixed(2)}%`,
+                      height: `${(tile.height_frac * 100).toFixed(2)}%`
+                    }}
+                    onLoad={i === 0 ? redraw : undefined}
+                  />
+                ))
+              ) : bgUrl ? (
+                /* Viewport mode (or document mode without tiles): single background */
                 <img
                   src={bgUrl}
                   alt="Page screenshot"
                   className={`pp-heatmap-bg${space === 'document' ? ' pp-heatmap-bg--document' : ''}`}
                   onLoad={redraw}
                 />
-              )}
+              ) : null}
               <canvas
                 ref={canvasRef}
                 className="pp-heatmap-canvas"
@@ -545,8 +587,9 @@ export default function Heatmap() {
 
             {space === 'document' && (
               <p className="pp-muted" style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
-                Document-relative heat (scroll-aware). The background image is above-the-fold reference only; activity
-                below the fold is plotted on the tall canvas. Dynamic page height across sessions may slightly blur bands.
+                {tileUrls.length > 0
+                  ? `Document-relative heat (scroll-aware). Background reconstructed from ${tileUrls.length} viewport capture${tileUrls.length > 1 ? 's' : ''} at different scroll positions.`
+                  : 'Document-relative heat (scroll-aware). Background shows above-the-fold reference only — new sessions will capture scroll-section tiles.'}
               </p>
             )}
 

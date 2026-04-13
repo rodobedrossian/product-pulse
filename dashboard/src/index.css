@@ -5046,6 +5046,16 @@ select.pp-input {
   border-bottom: 2px dashed rgba(0, 0, 0, 0.12);
 }
 
+/* Scroll-section tile: positioned absolutely within the canvas wrap */
+.pp-heatmap-tile {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  object-fit: cover;
+  object-position: top center;
+  pointer-events: none;
+}
+
 .pp-heatmap-canvas {
   position: absolute;
   inset: 0;

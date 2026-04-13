@@ -26,7 +26,7 @@ function matchesGoal(event, def) {
 router.post('/', async (req, res) => {
   const {
     tid, test_id, type, selector, url, metadata, timestamp, screenshot,
-    x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px
+    x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, scroll_y
   } = req.body
 
   if (!tid || !test_id || !type || !timestamp) {
@@ -55,7 +55,8 @@ router.post('/', async (req, res) => {
       tid, test_id, type, selector, url, metadata, timestamp,
       x: x ?? null, y: y ?? null, vw: vw ?? null, vh: vh ?? null,
       doc_x: doc_x ?? null, doc_y: doc_y ?? null,
-      doc_w_px: doc_w_px ?? null, doc_h_px: doc_h_px ?? null
+      doc_w_px: doc_w_px ?? null, doc_h_px: doc_h_px ?? null,
+      scroll_y: scroll_y ?? null
     })
     .select('id')
     .single()
