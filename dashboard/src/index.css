@@ -5051,7 +5051,7 @@ select.pp-input {
   position: absolute;
   left: 0;
   width: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top center;
   pointer-events: none;
 }

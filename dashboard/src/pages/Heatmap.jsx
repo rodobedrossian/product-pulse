@@ -586,11 +586,29 @@ export default function Heatmap() {
             </div>
 
             {space === 'document' && (
-              <p className="pp-muted" style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
-                {tileUrls.length > 0
-                  ? `Document-relative heat (scroll-aware). Background reconstructed from ${tileUrls.length} viewport capture${tileUrls.length > 1 ? 's' : ''} at different scroll positions.`
-                  : 'Document-relative heat (scroll-aware). Background shows above-the-fold reference only — new sessions will capture scroll-section tiles.'}
-              </p>
+              <div style={{ marginTop: '0.5rem', textAlign: 'center', maxWidth: 560, marginLeft: 'auto', marginRight: 'auto' }}>
+                <p className="pp-muted" style={{ fontSize: '0.75rem', margin: '0 0 0.35rem' }}>
+                  {tileUrls.length > 0
+                    ? `Document-relative heat (scroll-aware). Background reconstructed from ${tileUrls.length} viewport capture${tileUrls.length > 1 ? 's' : ''} at different scroll positions.`
+                    : 'Document-relative heat (scroll-aware). Background shows above-the-fold reference only — new sessions will capture scroll-section tiles.'}
+                </p>
+                {selected?.tile_height_frac_sum != null &&
+                  selected.tile_height_frac_sum < 0.85 &&
+                  tileUrls.length > 0 && (
+                    <p
+                      className="pp-muted"
+                      style={{
+                        fontSize: '0.7rem',
+                        margin: 0,
+                        color: 'var(--color-warning, #b45309)'
+                      }}
+                    >
+                      Background incomplete: viewport tiles cover about{' '}
+                      {Math.round(Math.min(100, selected.tile_height_frac_sum * 100))}% of the inferred page
+                      height. Heat is still accurate; gray bands are missing screenshots.
+                    </p>
+                  )}
+              </div>
             )}
 
             <div className="pp-heatmap-legend-block">
