@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { randomUUID } from 'crypto'
 import db from '../db.js'
 import adminDb from '../db-admin.js'
+import { fetchAllPages } from '../lib/supabasePaginate.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -99,12 +100,16 @@ router.get('/:id/results', requireAuth, async (req, res) => {
 
   if (partError) return res.status(500).json({ error: partError.message })
 
-  // 3. Load ALL events for this test in one query (avoids N+1)
-  const { data: allEvents, error: eventsError } = await db
-    .from('events')
-    .select('*')
-    .eq('test_id', id)
-    .order('timestamp', { ascending: true })
+  // 3. Load ALL events for this test (paginate — PostgREST caps at 1000 rows per request)
+  const { data: allEvents, error: eventsError } = await fetchAllPages((from, to) =>
+    db
+      .from('events')
+      .select('*')
+      .eq('test_id', id)
+      .order('timestamp', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to)
+  )
 
   if (eventsError) return res.status(500).json({ error: eventsError.message })
 

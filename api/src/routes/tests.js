@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import db from '../db.js'
 import adminDb from '../db-admin.js'
 import { requireAuth } from '../middleware/auth.js'
+import { fetchAllPages } from '../lib/supabasePaginate.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SNIPPET_PATH = join(__dirname, '../../snippet/protopulse.js')
@@ -391,16 +392,20 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
   const { data: test } = await query.single()
   if (!test) return res.status(404).json({ error: 'Test not found' })
 
-  // Pull all pointer events that carry coordinate data
-  const { data: events, error } = await adminDb
-    .from('events')
-    .select(
-      'id, type, x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, url, metadata, screenshot_object_path, timestamp'
-    )
-    .eq('test_id', id)
-    .in('type', ['click', 'mousemove_batch'])
-    .not('url', 'is', null)
-    .order('timestamp', { ascending: true })
+  // Pull all pointer events that carry coordinate data (paginate — default max 1000 rows)
+  const { data: events, error } = await fetchAllPages((from, to) =>
+    adminDb
+      .from('events')
+      .select(
+        'id, type, x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, url, metadata, screenshot_object_path, timestamp'
+      )
+      .eq('test_id', id)
+      .in('type', ['click', 'mousemove_batch'])
+      .not('url', 'is', null)
+      .order('timestamp', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to)
+  )
 
   if (error) return res.status(500).json({ error: error.message })
   if (!events?.length) return res.json({ pages: [] })
