@@ -205,6 +205,33 @@ function ObservationalResults({ data, testId, navigate }) {
   }, [allEvents])
   const maxEventTypeCount = Math.max(1, ...eventTypeCounts.map((e) => e.count))
 
+  const topUrls = useMemo(() => {
+    const map = {}
+    allEvents.forEach((e) => {
+      if (!e.url) return
+      map[e.url] = (map[e.url] || 0) + 1
+    })
+    return Object.entries(map)
+      .map(([url, count]) => ({ url, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+  }, [allEvents])
+  const maxUrlCount = Math.max(1, ...topUrls.map((u) => u.count))
+
+  const topInteractions = useMemo(() => {
+    const map = {}
+    allEvents
+      .filter((e) => e.type === 'click' || e.type === 'input_change')
+      .forEach((e) => {
+        const label = (e.metadata?.text?.trim() || e.selector || '').slice(0, 80) || '(unknown)'
+        const url = e.url || ''
+        const key = `${e.type}|||${label}|||${url}`
+        if (!map[key]) map[key] = { type: e.type, label, url, count: 0 }
+        map[key].count++
+      })
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 20)
+  }, [allEvents])
+
   const sessionReferrerOptions = useMemo(() => {
     const sources = new Set()
     sessions.forEach((s) => {
@@ -322,6 +349,74 @@ function ObservationalResults({ data, testId, navigate }) {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="pp-card" style={{ marginBottom: '1rem' }}>
+            <h2 className="pp-section-title" style={{ marginBottom: '0.75rem' }}>Top URLs visited</h2>
+            {topUrls.length === 0 ? (
+              <p className="pp-muted" style={{ margin: 0 }}>No URL data yet.</p>
+            ) : (
+              <div className="pp-mini-bars">
+                {topUrls.map((u) => {
+                  let display = u.url
+                  try { const p = new URL(u.url); display = p.pathname + (p.search || '') } catch { /* noop */ }
+                  return (
+                    <div key={u.url} className="pp-mini-bar-row pp-mini-bar-row--url">
+                      <span className="pp-mini-bar-label" title={u.url}>{display || u.url}</span>
+                      <div className="pp-mini-bar-track">
+                        <div className="pp-mini-bar-fill pp-mini-bar-fill--url" style={{ width: `${(u.count / maxUrlCount) * 100}%` }} />
+                      </div>
+                      <span className="pp-mini-bar-value">{u.count}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="pp-card pp-table-card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1rem' }}>
+            <div style={{ padding: '1rem 1.35rem 0.75rem' }}>
+              <h2 className="pp-section-title" style={{ margin: 0 }}>Top interactions</h2>
+              <p className="pp-muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>Clicks and input changes grouped by element and page</p>
+            </div>
+            {topInteractions.length === 0 ? (
+              <p className="pp-muted" style={{ margin: '0 1.35rem 1rem' }}>No click or input events yet.</p>
+            ) : (
+              <div className="pp-table-wrap" style={{ margin: 0, padding: 0 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Element</th>
+                      <th>Page</th>
+                      <th>Type</th>
+                      <th style={{ textAlign: 'right' }}>Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topInteractions.map((item, i) => {
+                      let pageDisplay = item.url
+                      try { const p = new URL(item.url); pageDisplay = p.pathname + (p.search || '') } catch { /* noop */ }
+                      return (
+                        <tr key={i}>
+                          <td style={{ maxWidth: 260 }}>
+                            <span className="pp-interaction-label" title={item.label}>
+                              {item.label.length > 50 ? `${item.label.slice(0, 50)}…` : item.label}
+                            </span>
+                          </td>
+                          <td className="pp-muted" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8125rem' }} title={item.url}>
+                            {pageDisplay || '—'}
+                          </td>
+                          <td>
+                            <span className={`pp-interaction-type pp-interaction-type--${item.type}`}>{item.type}</span>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{item.count}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}

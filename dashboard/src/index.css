@@ -1148,6 +1148,43 @@ details.pp-details[open] summary::before {
   font-variant-numeric: tabular-nums;
 }
 
+.pp-mini-bar-row--url .pp-mini-bar-label {
+  max-width: 260px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.pp-mini-bar-fill--url {
+  height: 100%;
+  border-radius: 999px;
+  background: #7c3aed;
+}
+
+.pp-interaction-label {
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.pp-interaction-type {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pp-interaction-type--click {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+
+.pp-interaction-type--input_change {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
 .pp-loading {
   font-size: 0.9375rem;
   color: var(--color-muted);
