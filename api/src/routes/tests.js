@@ -375,6 +375,12 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json({ ...test, participants: participants || [], steps, tester_count: testerCount })
 })
 
+function percentile95(arr) {
+  if (!arr.length) return null
+  const sorted = [...arr].sort((a, b) => a - b)
+  return sorted[Math.floor((sorted.length - 1) * 0.95)]
+}
+
 // GET /api/tests/:id/heatmap — aggregated click + mousemove coords grouped by page path
 router.get('/:id/heatmap', requireAuth, async (req, res) => {
   const { id } = req.params
@@ -388,7 +394,9 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
   // Pull all pointer events that carry coordinate data
   const { data: events, error } = await adminDb
     .from('events')
-    .select('id, type, x, y, vw, vh, url, metadata, screenshot_object_path, timestamp')
+    .select(
+      'id, type, x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, url, metadata, screenshot_object_path, timestamp'
+    )
     .eq('test_id', id)
     .in('type', ['click', 'mousemove_batch'])
     .not('url', 'is', null)
@@ -404,12 +412,27 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
     try { path = new URL(ev.url).pathname } catch { /* keep raw url */ }
 
     if (!pageMap.has(path)) {
-      pageMap.set(path, { url: ev.url, path, clicks: [], moves: [], background: null })
+      pageMap.set(path, {
+        url: ev.url,
+        path,
+        clicks: [],
+        moves: [],
+        clicks_doc: [],
+        moves_doc: [],
+        doc_h_px_values: [],
+        doc_w_px_values: [],
+        background: null
+      })
     }
     const page = pageMap.get(path)
 
     if (ev.type === 'click' && ev.x != null) {
       page.clicks.push({ x: ev.x, y: ev.y })
+      if (ev.doc_x != null && ev.doc_y != null) {
+        page.clicks_doc.push({ x: ev.doc_x, y: ev.doc_y })
+        if (ev.doc_h_px != null) page.doc_h_px_values.push(ev.doc_h_px)
+        if (ev.doc_w_px != null) page.doc_w_px_values.push(ev.doc_w_px)
+      }
       // Use the first screenshot captured on this page as the background image
       if (!page.background && ev.screenshot_object_path) {
         page.background = ev.screenshot_object_path
@@ -419,17 +442,26 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
     if (ev.type === 'mousemove_batch' && Array.isArray(ev.metadata?.points)) {
       for (const pt of ev.metadata.points) {
         if (pt.x != null && pt.y != null) page.moves.push({ x: pt.x, y: pt.y })
+        if (pt.dx != null && pt.dy != null) {
+          page.moves_doc.push({ x: pt.dx, y: pt.dy })
+          if (pt.dh != null) page.doc_h_px_values.push(pt.dh)
+          if (pt.dw != null) page.doc_w_px_values.push(pt.dw)
+        }
       }
     }
   }
 
-  const pages = Array.from(pageMap.values()).map(p => ({
+  const pages = Array.from(pageMap.values()).map((p) => ({
     path: p.path,
     url: p.url,
     click_count: p.clicks.length,
-    move_count:  p.moves.length,
+    move_count: p.moves.length,
     clicks: p.clicks,
-    moves:  p.moves,
+    moves: p.moves,
+    clicks_doc: p.clicks_doc,
+    moves_doc: p.moves_doc,
+    max_doc_h_px: percentile95(p.doc_h_px_values),
+    max_doc_w_px: percentile95(p.doc_w_px_values),
     background_path: p.background ?? null
   }))
 

@@ -20,11 +20,13 @@ function loadHeatmapPrefs(testId) {
     if (typeof o.spread !== 'number' || typeof o.intensity !== 'number' || typeof o.overlay !== 'number') return null
     const smooth =
       typeof o.smooth === 'number' ? Math.min(100, Math.max(0, o.smooth)) : DEFAULT_SMOOTH
+    const space = o.space === 'document' || o.space === 'viewport' ? o.space : 'viewport'
     return {
       spread: Math.min(150, Math.max(50, o.spread)),
       intensity: Math.min(100, Math.max(0, o.intensity)),
       overlay: Math.min(90, Math.max(35, o.overlay)),
-      smooth
+      smooth,
+      space
     }
   } catch {
     return null
@@ -37,6 +39,16 @@ function saveHeatmapPrefs(testId, prefs) {
   } catch {
     /* ignore */
   }
+}
+
+/** Canvas height for document-space mode from p95 page dimensions (cap 8000px). */
+function documentCanvasHeight(selected, wrapW) {
+  const W = wrapW || 800
+  const maxH = selected?.max_doc_h_px
+  const maxW = selected?.max_doc_w_px
+  if (maxH && maxW) return Math.min(8000, Math.round(W * (maxH / maxW)))
+  if (maxH) return Math.min(8000, Math.round((W * maxH) / 1440))
+  return Math.round((W * 9) / 16)
 }
 
 /**
@@ -228,6 +240,7 @@ export default function Heatmap() {
   const [intensity, setIntensity] = useState(DEFAULT_INTENSITY)
   const [overlay, setOverlay] = useState(DEFAULT_OVERLAY)
   const [smooth, setSmooth] = useState(DEFAULT_SMOOTH)
+  const [space, setSpace] = useState('viewport')
 
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
@@ -239,12 +252,13 @@ export default function Heatmap() {
       setIntensity(p.intensity)
       setOverlay(p.overlay)
       setSmooth(p.smooth ?? DEFAULT_SMOOTH)
+      if (p.space) setSpace(p.space)
     }
   }, [id])
 
   useEffect(() => {
-    saveHeatmapPrefs(id, { spread, intensity, overlay, smooth })
-  }, [id, spread, intensity, overlay, smooth])
+    saveHeatmapPrefs(id, { spread, intensity, overlay, smooth, space })
+  }, [id, spread, intensity, overlay, smooth, space])
 
   useEffect(() => {
     apiFetch(`/api/tests/${id}/heatmap`)
@@ -277,12 +291,26 @@ export default function Heatmap() {
     if (!canvas || !selected) return
 
     const W = wrap?.clientWidth || 800
-    const H = wrap?.clientHeight || Math.round((W * 9) / 16)
+    let H
+    if (space === 'document') {
+      H = documentCanvasHeight(selected, W)
+      if (wrap) {
+        wrap.style.height = `${H}px`
+        wrap.style.aspectRatio = 'unset'
+      }
+    } else {
+      H = wrap?.clientHeight || Math.round((W * 9) / 16)
+      if (wrap) {
+        wrap.style.height = ''
+        wrap.style.aspectRatio = ''
+      }
+    }
+
     canvas.width = W
     canvas.height = H
 
-    const clicks = selected.clicks || []
-    const moves = selected.moves || []
+    const clicks = space === 'document' ? selected.clicks_doc || [] : selected.clicks || []
+    const moves = space === 'document' ? selected.moves_doc || [] : selected.moves || []
     const hasClicks = clicks.length > 0
     const hasMoves = moves.length > 0
 
@@ -301,7 +329,7 @@ export default function Heatmap() {
       gamma: 0.82,
       smooth
     })
-  }, [selected, mode, spread, intensity, smooth])
+  }, [selected, mode, spread, intensity, smooth, space])
 
   useEffect(() => {
     redraw()
@@ -316,12 +344,23 @@ export default function Heatmap() {
   if (error) return <p className="error">Error: {error}</p>
 
   const pointCount = selected
-    ? mode === 'clicks'
-      ? selected.clicks?.length || 0
-      : mode === 'moves'
-        ? selected.moves?.length || 0
-        : (selected.clicks?.length || 0) + (selected.moves?.length || 0)
+    ? space === 'document'
+      ? mode === 'clicks'
+        ? selected.clicks_doc?.length || 0
+        : mode === 'moves'
+          ? selected.moves_doc?.length || 0
+          : (selected.clicks_doc?.length || 0) + (selected.moves_doc?.length || 0)
+      : mode === 'clicks'
+        ? selected.clicks?.length || 0
+        : mode === 'moves'
+          ? selected.moves?.length || 0
+          : (selected.clicks?.length || 0) + (selected.moves?.length || 0)
     : 0
+
+  const hasViewportData =
+    selected && ((selected.clicks?.length ?? 0) > 0 || (selected.moves?.length ?? 0) > 0)
+  const hasDocData =
+    selected && ((selected.clicks_doc?.length ?? 0) > 0 || (selected.moves_doc?.length ?? 0) > 0)
 
   const hiPercentileLabel = Math.round(98 - (intensity / 100) * 10)
   const hotFractionPct = Math.max(1, 100 - hiPercentileLabel)
@@ -384,6 +423,20 @@ export default function Heatmap() {
             ))}
           </div>
 
+          <div className="pp-inline pp-heatmap-space-row" style={{ gap: '0.4rem', flexWrap: 'wrap' }}>
+            {['viewport', 'document'].map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`pp-btn-sm${space === s ? ' primary' : ''}`}
+                onClick={() => setSpace(s)}
+                title={s === 'document' ? 'Scroll-aware coordinates (requires newer snippet data)' : 'Screen coordinates'}
+              >
+                {s === 'viewport' ? '⊡ Viewport' : '↕ Document'}
+              </button>
+            ))}
+          </div>
+
           <div className="pp-heatmap-tuners">
             <label className="pp-heatmap-tuner">
               <span>Spread</span>
@@ -432,7 +485,7 @@ export default function Heatmap() {
           </span>
         </div>
 
-        {!selected || ((selected.clicks?.length ?? 0) === 0 && (selected.moves?.length ?? 0) === 0) ? (
+        {!selected || !hasViewportData ? (
           <div className="pp-heatmap-empty">
             <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔥</div>
             <p style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>No heatmap data yet</p>
@@ -440,14 +493,25 @@ export default function Heatmap() {
               Make sure the snippet is installed on your prototype and participants have visited this page.
             </p>
           </div>
+        ) : space === 'document' && !hasDocData ? (
+          <div className="pp-heatmap-empty">
+            <p style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>No document-space data for this page</p>
+            <p className="pp-muted" style={{ margin: 0, fontSize: '0.875rem', maxWidth: 420, textAlign: 'center' }}>
+              Events recorded before the document heatmap update only have viewport coordinates. Switch to{' '}
+              <strong>Viewport</strong> to see them, or collect new sessions with the latest snippet.
+            </p>
+          </div>
         ) : (
           <>
-            <div className="pp-heatmap-canvas-wrap" ref={wrapRef}>
+            <div
+              className={`pp-heatmap-canvas-wrap${space === 'document' ? ' pp-heatmap-canvas-wrap--document' : ''}`}
+              ref={wrapRef}
+            >
               {bgUrl && (
                 <img
                   src={bgUrl}
                   alt="Page screenshot"
-                  className="pp-heatmap-bg"
+                  className={`pp-heatmap-bg${space === 'document' ? ' pp-heatmap-bg--document' : ''}`}
                   onLoad={redraw}
                 />
               )}
@@ -457,6 +521,13 @@ export default function Heatmap() {
                 style={{ opacity: overlay / 100 }}
               />
             </div>
+
+            {space === 'document' && (
+              <p className="pp-muted" style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
+                Document-relative heat (scroll-aware). The background image is above-the-fold reference only; activity
+                below the fold is plotted on the tall canvas. Dynamic page height across sessions may slightly blur bands.
+              </p>
+            )}
 
             <div className="pp-heatmap-legend-block">
               <div className="pp-heatmap-legend">

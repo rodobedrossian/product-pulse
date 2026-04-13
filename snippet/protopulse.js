@@ -471,6 +471,10 @@
         payload.y  = coords.y
         payload.vw = coords.vw
         payload.vh = coords.vh
+        if (coords.doc_x != null) payload.doc_x = coords.doc_x
+        if (coords.doc_y != null) payload.doc_y = coords.doc_y
+        if (coords.doc_w_px != null) payload.doc_w_px = coords.doc_w_px
+        if (coords.doc_h_px != null) payload.doc_h_px = coords.doc_h_px
       }
 
       // Capture screenshot in parallel; send event data with it in a single request.
@@ -507,6 +511,19 @@
       if (_ppOnEvent) _ppOnEvent(type, selector || null, cleanedUrl)
     }
 
+    // Document-space coords for heatmaps (scroll-aware). Sampled at event time.
+    function docCoords(clientX, clientY) {
+      var dh = Math.max(document.documentElement.scrollHeight, window.innerHeight)
+      var dw = Math.max(document.documentElement.scrollWidth, window.innerWidth)
+      if (!dh || !dw) return null
+      return {
+        doc_x:    Math.min(1, Math.max(0, (window.scrollX + clientX) / dw)),
+        doc_y:    Math.min(1, Math.max(0, (window.scrollY + clientY) / dh)),
+        doc_w_px: dw,
+        doc_h_px: dh
+      }
+    }
+
     // --- Extract visible text from a clicked element ---
     function getClickText(el) {
       var node = el
@@ -524,13 +541,23 @@
       'click',
       function (e) {
         var text = getClickText(e.target)
+        var vp = {
+          x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight,
+          vw: window.innerWidth, vh: window.innerHeight
+        }
+        var dc = docCoords(e.clientX, e.clientY)
+        if (dc) {
+          vp.doc_x = dc.doc_x
+          vp.doc_y = dc.doc_y
+          vp.doc_w_px = dc.doc_w_px
+          vp.doc_h_px = dc.doc_h_px
+        }
         send(
           'click',
           buildSelector(e.target),
           location.href,
           text ? { text: text } : null,
-          { x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight,
-            vw: window.innerWidth, vh: window.innerHeight }
+          vp
         )
       },
       true
@@ -544,10 +571,18 @@
         var now = Date.now()
         if (now - _lastMove < 500) return   // sample at most 2 pts/s
         _lastMove = now
-        _moveBuf.push({
+        var dc = docCoords(e.clientX, e.clientY)
+        var pt = {
           x: +(e.clientX / window.innerWidth).toFixed(4),
           y: +(e.clientY / window.innerHeight).toFixed(4)
-        })
+        }
+        if (dc) {
+          pt.dx = +dc.doc_x.toFixed(4)
+          pt.dy = +dc.doc_y.toFixed(4)
+          pt.dh = dc.doc_h_px
+          pt.dw = dc.doc_w_px
+        }
+        _moveBuf.push(pt)
       })
       function flushMoves() {
         if (!_moveBuf.length || !liveTid) return
