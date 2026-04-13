@@ -5023,6 +5023,8 @@ select.pp-input {
   overflow-x: hidden;
   overflow-y: auto;
   max-height: 80vh;
+  /* Light page-like background so below-fold heat shows against a neutral surface */
+  background: #f8f7f5;
 }
 
 .pp-heatmap-bg {
@@ -5036,9 +5038,12 @@ select.pp-input {
 /* Reference screenshot is viewport-only; do not stretch across full document height */
 .pp-heatmap-bg--document {
   height: auto;
-  max-height: min(40vh, 480px);
+  max-height: min(50vh, 600px);
+  width: 100%;
   object-fit: contain;
   object-position: top center;
+  /* Subtle separator line shows where the above-fold screenshot ends */
+  border-bottom: 2px dashed rgba(0, 0, 0, 0.12);
 }
 
 .pp-heatmap-canvas {
