@@ -2,6 +2,11 @@
   // --- Configuration ---
   var cfg = window.ProtoPulse || {}
   var API_URL = (cfg.apiUrl || '__PRODUCT_PULSE_API_URL__').replace(/\/$/, '')
+  // After this many ms with no tracked interaction, stop replay + event capture.
+  // New observational sessions get a fresh tid when the user returns; directed (URL tid) resumes the same tid.
+  // Override: window.ProtoPulse = { ..., sessionIdleMs: 5 * 60 * 1000 }
+  var SESSION_IDLE_MS =
+    typeof cfg.sessionIdleMs === 'number' && cfg.sessionIdleMs > 0 ? cfg.sessionIdleMs : 3 * 60 * 1000
 
   // --- Read tracking params ---
   var params = new URLSearchParams(location.search)
@@ -239,7 +244,6 @@
   var OBS_LS_PREFIX  = '__pp_tk_'    // localStorage: persistent tester key
   var OBS_TID_PREFIX = '__pp_otid_'  // sessionStorage: session tid
   var OBS_TS_PREFIX  = '__pp_ots_'   // sessionStorage: last-activity timestamp
-  var INACTIVITY_MS  = 30 * 60 * 1000  // 30 minutes
 
   function detectBrowser(ua) {
     if (/Edg\//i.test(ua))                                    return 'Edge '    + ((ua.match(/Edg\/(\d+)/)      || [])[1] || '')
@@ -260,7 +264,7 @@
       try { localStorage.setItem(lsKey, testerKey) } catch (e) {}
     }
 
-    // 2. Session boundary: reuse session if active within 30 min
+    // 2. Session boundary: reuse session if last interaction within SESSION_IDLE_MS (default 3 min)
     var ssKey = OBS_TID_PREFIX + resolvedTestId
     var tsKey = OBS_TS_PREFIX  + resolvedTestId
     var existingTid = null
@@ -270,7 +274,7 @@
       lastTs = parseInt(sessionStorage.getItem(tsKey) || '0', 10)
     } catch (e) {}
 
-    if (existingTid && (Date.now() - lastTs <= INACTIVITY_MS)) {
+    if (existingTid && (Date.now() - lastTs <= SESSION_IDLE_MS)) {
       // Resume existing session — start tracking immediately, no API call needed
       try { sessionStorage.setItem(tsKey, String(Date.now())) } catch (e) {}
       beginTracking(resolvedTestId, existingTid, false)
@@ -315,8 +319,107 @@
   // calls above — this is intentional.
 
   function beginTracking(resolvedTestId, resolvedTid, propagateParams) {
+    // ── Stop sentinel (MPA support) ─────────────────────────────────────────────
+    // If the moderator stopped tracking and the participant navigates to a new page
+    // (e.g. in a multi-page Figma/Framer prototype), sessionStorage persists the
+    // stopped state so the tracker never restarts on the new page load.
+    var _stoppedKey = '__pp_stopped_' + resolvedTestId + '_' + resolvedTid
+    try { if (sessionStorage.getItem(_stoppedKey)) return } catch (e) {}
+
+    var _trackingStopped = false
+    var liveTid = resolvedTid
+    var lastActivityAt = Date.now()
+    var idlePaused = false
+    var idleCheckIntervalId = null
+
+    function noteActivity() {
+      lastActivityAt = Date.now()
+    }
+
+    function resumeAfterIdle() {
+      if (!idlePaused) return
+      idlePaused = false
+      noteActivity()
+      if (!propagateParams) {
+        var newTid = 'obs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10)
+        liveTid = newTid
+        try {
+          sessionStorage.setItem('__pp_otid_' + resolvedTestId, newTid)
+          sessionStorage.setItem('__pp_ots_' + resolvedTestId, String(Date.now()))
+          sessionStorage.setItem('__pp_tid', newTid)
+        } catch (e) {}
+        var lsKey = OBS_LS_PREFIX + resolvedTestId
+        var testerKey = null
+        try {
+          testerKey = localStorage.getItem(lsKey)
+        } catch (e) {}
+        var ua = navigator.userAgent
+        fetch(API_URL + '/api/tests/' + resolvedTestId + '/auto-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tid: newTid,
+            tester_key: testerKey || '',
+            referrer: document.referrer || '',
+            browser: detectBrowser(ua),
+            device_type: /Mobi|Android/i.test(ua) ? 'mobile' : /Tablet|iPad/i.test(ua) ? 'tablet' : 'desktop'
+          })
+        }).catch(function () {})
+      }
+      if (typeof window.__ppStartReplay === 'function') {
+        window.__ppStartReplay({ apiUrl: API_URL, tid: liveTid, testId: resolvedTestId })
+      } else {
+        var sResume = document.createElement('script')
+        sResume.src = API_URL + '/snippet/replay-bundle.js'
+        sResume.onload = function () {
+          if (typeof window.__ppStartReplay === 'function') {
+            window.__ppStartReplay({ apiUrl: API_URL, tid: liveTid, testId: resolvedTestId })
+          }
+        }
+        document.head.appendChild(sResume)
+      }
+    }
+
+    function pauseForIdle() {
+      if (idlePaused || _trackingStopped) return
+      idlePaused = true
+      if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
+      if (!propagateParams) {
+        try {
+          sessionStorage.removeItem('__pp_otid_' + resolvedTestId)
+          sessionStorage.removeItem('__pp_ots_' + resolvedTestId)
+        } catch (e) {}
+      }
+    }
+
+    idleCheckIntervalId = setInterval(function () {
+      if (_trackingStopped || idlePaused) return
+      if (Date.now() - lastActivityAt < SESSION_IDLE_MS) return
+      pauseForIdle()
+    }, 10000)
+
+    document.addEventListener(
+      'keydown',
+      function () {
+        if (!idlePaused || _trackingStopped) return
+        resumeAfterIdle()
+      },
+      true
+    )
+
+    function stopTracking() {
+      if (_trackingStopped) return
+      _trackingStopped = true
+      if (idleCheckIntervalId) {
+        clearInterval(idleCheckIntervalId)
+        idleCheckIntervalId = null
+      }
+      try { sessionStorage.setItem(_stoppedKey, '1') } catch (e) {}
+      if (typeof window.__ppStopReplay === 'function') window.__ppStopReplay()
+    }
+
     try {
-      sessionStorage.setItem('__pp_tid', resolvedTid)
+      sessionStorage.setItem('__pp_tid', liveTid)
       sessionStorage.setItem('__pp_test_id', resolvedTestId)
     } catch (e) {}
 
@@ -348,10 +451,14 @@
     // request with the screenshot attached once html2canvas finishes.
     // coords (optional): { x, y, vw, vh } — normalised pointer position
     function send(type, selector, url, metadata, coords) {
+      if (idlePaused && type !== 'mousemove_batch') resumeAfterIdle()
+      if (_trackingStopped) return
+      if (idlePaused) return
+      noteActivity()
       var cleanedUrl = cleanUrl(url || location.href)
       var ts = new Date().toISOString()
       var payload = {
-        tid: resolvedTid,
+        tid: liveTid,
         test_id: resolvedTestId,
         type: type,
         selector: selector || null,
@@ -364,10 +471,18 @@
         payload.y  = coords.y
         payload.vw = coords.vw
         payload.vh = coords.vh
+        if (coords.doc_x != null) payload.doc_x = coords.doc_x
+        if (coords.doc_y != null) payload.doc_y = coords.doc_y
+        if (coords.doc_w_px != null) payload.doc_w_px = coords.doc_w_px
+        if (coords.doc_h_px != null) payload.doc_h_px = coords.doc_h_px
       }
 
       // Capture screenshot in parallel; send event data with it in a single request.
       // If the lib isn't loaded yet, send without screenshot so events aren't delayed.
+      function handleEventsResponse(r) {
+        if (r && r.ok) r.json().then(function (d) { if (d && d.stop) stopTracking() }).catch(function () {})
+      }
+
       if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
         window.__ppCaptureScreenshot().then(function (dataUrl) {
           if (dataUrl) payload.screenshot = dataUrl
@@ -375,13 +490,13 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-          }).catch(function () {})
+          }).then(handleEventsResponse).catch(function () {})
         }).catch(function () {
           fetch(API_URL + '/api/events', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-          }).catch(function () {})
+          }).then(handleEventsResponse).catch(function () {})
         })
       } else {
         fetch(API_URL + '/api/events', {
@@ -389,11 +504,24 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
           keepalive: true
-        }).catch(function () {})
+        }).then(handleEventsResponse).catch(function () {})
       }
 
       // Notify overlay (non-blocking)
       if (_ppOnEvent) _ppOnEvent(type, selector || null, cleanedUrl)
+    }
+
+    // Document-space coords for heatmaps (scroll-aware). Sampled at event time.
+    function docCoords(clientX, clientY) {
+      var dh = Math.max(document.documentElement.scrollHeight, window.innerHeight)
+      var dw = Math.max(document.documentElement.scrollWidth, window.innerWidth)
+      if (!dh || !dw) return null
+      return {
+        doc_x:    Math.min(1, Math.max(0, (window.scrollX + clientX) / dw)),
+        doc_y:    Math.min(1, Math.max(0, (window.scrollY + clientY) / dh)),
+        doc_w_px: dw,
+        doc_h_px: dh
+      }
     }
 
     // --- Extract visible text from a clicked element ---
@@ -413,13 +541,23 @@
       'click',
       function (e) {
         var text = getClickText(e.target)
+        var vp = {
+          x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight,
+          vw: window.innerWidth, vh: window.innerHeight
+        }
+        var dc = docCoords(e.clientX, e.clientY)
+        if (dc) {
+          vp.doc_x = dc.doc_x
+          vp.doc_y = dc.doc_y
+          vp.doc_w_px = dc.doc_w_px
+          vp.doc_h_px = dc.doc_h_px
+        }
         send(
           'click',
           buildSelector(e.target),
           location.href,
           text ? { text: text } : null,
-          { x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight,
-            vw: window.innerWidth, vh: window.innerHeight }
+          vp
         )
       },
       true
@@ -433,13 +571,25 @@
         var now = Date.now()
         if (now - _lastMove < 500) return   // sample at most 2 pts/s
         _lastMove = now
-        _moveBuf.push({
+        var dc = docCoords(e.clientX, e.clientY)
+        var pt = {
           x: +(e.clientX / window.innerWidth).toFixed(4),
           y: +(e.clientY / window.innerHeight).toFixed(4)
-        })
+        }
+        if (dc) {
+          pt.dx = +dc.doc_x.toFixed(4)
+          pt.dy = +dc.doc_y.toFixed(4)
+          pt.dh = dc.doc_h_px
+          pt.dw = dc.doc_w_px
+        }
+        _moveBuf.push(pt)
       })
       function flushMoves() {
-        if (!_moveBuf.length || !resolvedTid) return
+        if (!_moveBuf.length || !liveTid) return
+        if (idlePaused) {
+          _moveBuf.length = 0
+          return
+        }
         var pts = _moveBuf.splice(0)
         send('mousemove_batch', null, location.href, { points: pts },
              { vw: window.innerWidth, vh: window.innerHeight })
@@ -550,8 +700,9 @@
     var s = document.createElement('script')
     s.src = API_URL + '/snippet/replay-bundle.js'
     s.onload = function () {
+      if (_trackingStopped) return // stopped before bundle finished loading
       if (typeof window.__ppStartReplay === 'function') {
-        window.__ppStartReplay({ apiUrl: API_URL, tid: resolvedTid, testId: resolvedTestId })
+        window.__ppStartReplay({ apiUrl: API_URL, tid: liveTid, testId: resolvedTestId })
       }
     }
     document.head.appendChild(s)
@@ -780,10 +931,15 @@
         }, 2000)
       }
 
-      // Fetch scenario tasks and boot the overlay
-      fetch(API_URL + '/api/tests/' + resolvedTestId + '/tasks')
+      // Fetch scenario tasks and boot the overlay.
+      // Pass ?tid= so the server can signal stop: true if the moderator
+      // has already halted tracking for this participant.
+      fetch(API_URL + '/api/tests/' + resolvedTestId + '/tasks?tid=' + encodeURIComponent(liveTid))
         .then(function (r) { return r.json() })
         .then(function (data) {
+          // Moderator stopped tracking before participant opened the URL
+          if (data && data.stop) { stopTracking(); return }
+
           // ── Single-goal: stop replay the moment the goal fires ────────────────
           if (data.test_type === 'single' && data.goal_event && data.goal_event.type) {
             _ppOnEvent = function (type, sel, url) {
