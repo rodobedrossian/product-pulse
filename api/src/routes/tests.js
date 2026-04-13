@@ -376,10 +376,16 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json({ ...test, participants: participants || [], steps, tester_count: testerCount })
 })
 
-function percentile95(arr) {
+// Use median rather than p95: with small datasets (e.g. 10–20 doc events)
+// p95 ≈ the maximum, which gets pulled up by any session where the page had
+// dynamically loaded extra content. Median gives a stable representative height.
+function medianValue(arr) {
   if (!arr.length) return null
   const sorted = [...arr].sort((a, b) => a - b)
-  return sorted[Math.floor((sorted.length - 1) * 0.95)]
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : Math.round((sorted[mid - 1] + sorted[mid]) / 2)
 }
 
 // GET /api/tests/:id/heatmap — aggregated click + mousemove coords grouped by page path
@@ -465,8 +471,8 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
     moves: p.moves,
     clicks_doc: p.clicks_doc,
     moves_doc: p.moves_doc,
-    max_doc_h_px: percentile95(p.doc_h_px_values),
-    max_doc_w_px: percentile95(p.doc_w_px_values),
+    max_doc_h_px: medianValue(p.doc_h_px_values),
+    max_doc_w_px: medianValue(p.doc_w_px_values),
     background_path: p.background ?? null
   }))
 

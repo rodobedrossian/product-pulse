@@ -480,9 +480,29 @@ export default function Heatmap() {
             </label>
           </div>
 
-          <span className="pp-muted" style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-            {pointCount.toLocaleString()} point{pointCount !== 1 ? 's' : ''}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
+            <span className="pp-muted" style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+              {pointCount.toLocaleString()} point{pointCount !== 1 ? 's' : ''}
+            </span>
+            {space === 'document' && selected && (() => {
+              const totalClicks = selected.clicks?.length ?? 0
+              const totalMoves = selected.moves?.length ?? 0
+              const docClicks = selected.clicks_doc?.length ?? 0
+              const docMoves = selected.moves_doc?.length ?? 0
+              const total = totalClicks + totalMoves
+              const docTotal = docClicks + docMoves
+              if (total === 0) return null
+              const pct = Math.round((docTotal / total) * 100)
+              return (
+                <span
+                  style={{ fontSize: '0.7rem', whiteSpace: 'nowrap', color: pct < 50 ? 'var(--color-warning, #b45309)' : 'var(--color-success)' }}
+                  title={`${docTotal} of ${total} events have scroll-aware document coordinates. Events captured before the latest snippet update only have viewport coordinates.`}
+                >
+                  {pct}% doc coverage ({docTotal}/{total})
+                </span>
+              )
+            })()}
+          </div>
         </div>
 
         {!selected || !hasViewportData ? (
@@ -497,8 +517,9 @@ export default function Heatmap() {
           <div className="pp-heatmap-empty">
             <p style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>No document-space data for this page</p>
             <p className="pp-muted" style={{ margin: 0, fontSize: '0.875rem', maxWidth: 420, textAlign: 'center' }}>
-              Events recorded before the document heatmap update only have viewport coordinates. Switch to{' '}
-              <strong>Viewport</strong> to see them, or collect new sessions with the latest snippet.
+              {(selected?.clicks?.length ?? 0) + (selected?.moves?.length ?? 0) > 0
+                ? <>All {((selected?.clicks?.length ?? 0) + (selected?.moves?.length ?? 0)).toLocaleString()} events on this page were captured before scroll-aware tracking was added. Switch to <strong>Viewport</strong> to see them, or collect new sessions to populate Document mode.</>
+                : <>No events yet. Make sure the snippet is installed.</>}
             </p>
           </div>
         ) : (
