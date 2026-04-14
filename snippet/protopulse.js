@@ -14,6 +14,8 @@
     typeof cfg.moveFlushScrollPx === 'number' && cfg.moveFlushScrollPx > 0 ? cfg.moveFlushScrollPx : 40
   var MOVE_BATCH_MAX_POINTS =
     typeof cfg.moveBatchMaxPoints === 'number' && cfg.moveBatchMaxPoints > 0 ? cfg.moveBatchMaxPoints : 40
+  // Full-page heatmap capture is opt-in to avoid adding load to replay/event pipelines by default.
+  var HEATMAP_FULLPAGE_ENABLED = cfg.enableHeatmapFullPage === true
 
   // --- Read tracking params ---
   var params = new URLSearchParams(location.search)
@@ -700,6 +702,7 @@
 
     /** Once per path+session: capped full-page JPEG for dashboard document mode (fallback if tiles sparse). */
     function maybeScheduleHeatmapFullPage() {
+      if (!HEATMAP_FULLPAGE_ENABLED) return
       var fpKey = heatmapSessionStorageKey('fullpg')
       try {
         if (sessionStorage.getItem(fpKey)) return
