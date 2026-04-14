@@ -565,29 +565,35 @@
         if (r && r.ok) r.json().then(function (d) { if (d && d.stop) stopTracking() }).catch(function () {})
       }
 
-      if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
-        syncScrollRootForCapture()
-        window.__ppCaptureScreenshot().then(function (dataUrl) {
-          if (dataUrl) payload.screenshot = dataUrl
-          fetch(API_URL + '/api/events', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          }).then(handleEventsResponse).catch(function () {})
-        }).catch(function () {
-          fetch(API_URL + '/api/events', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          }).then(handleEventsResponse).catch(function () {})
-        })
-      } else {
+      // Always send the event immediately. Screenshot capture races against a
+      // timeout so a hung html2canvas can never block event delivery.
+      function postEvent(p) {
         fetch(API_URL + '/api/events', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          keepalive: true
+          body: JSON.stringify(p)
         }).then(handleEventsResponse).catch(function () {})
+      }
+
+      if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
+        syncScrollRootForCapture()
+        var _ssTimedOut = false
+        var _ssTimer = setTimeout(function () {
+          _ssTimedOut = true
+          postEvent(payload) // timeout — send without screenshot
+        }, 3000)
+        window.__ppCaptureScreenshot().then(function (dataUrl) {
+          if (_ssTimedOut) return // already sent
+          clearTimeout(_ssTimer)
+          if (dataUrl) payload.screenshot = dataUrl
+          postEvent(payload)
+        }).catch(function () {
+          if (_ssTimedOut) return
+          clearTimeout(_ssTimer)
+          postEvent(payload)
+        })
+      } else {
+        postEvent(payload)
       }
 
       // Notify overlay (non-blocking)

@@ -39,6 +39,8 @@ window.__ppCaptureScreenshot = function () {
     logging: false,
     width: root.clientWidth,
     height: root.clientHeight,
+    x: root.scrollLeft,
+    y: root.scrollTop,
     ignoreElements: ignoreOverlay
   }).then(function (canvas) {
     return canvas.toDataURL('image/jpeg', 0.75)
