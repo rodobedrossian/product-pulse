@@ -1,5 +1,4 @@
 import { Router } from 'express'
-import db from '../db.js'
 import adminDb from '../db-admin.js'
 import { requireAuth } from '../middleware/auth.js'
 
@@ -16,6 +15,23 @@ function mergedKey(testId, tid) {
   return `${testId}/${tid}/merged.json`
 }
 
+/** Participant row must be readable without a user JWT (snippet has no Supabase session). Use service role. */
+async function loadParticipantForChunk(test_id, tid) {
+  const attempts = 8
+  const delayMs = 120
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, delayMs))
+    const { data } = await adminDb
+      .from('participants')
+      .select('id, tracking_stopped_at')
+      .eq('tid', tid)
+      .eq('test_id', test_id)
+      .maybeSingle()
+    if (data) return data
+  }
+  return null
+}
+
 // POST /api/replay/chunk — receive a batch of rrweb events from the snippet
 router.post('/replay/chunk', async (req, res) => {
   const { tid, test_id, part_index, events } = req.body
@@ -24,13 +40,8 @@ router.post('/replay/chunk', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: tid, test_id, part_index, events' })
   }
 
-  // Validate participant and check tracking status in one query
-  const { data: participant } = await db
-    .from('participants')
-    .select('id, tracking_stopped_at')
-    .eq('tid', tid)
-    .eq('test_id', test_id)
-    .single()
+  // Validate participant and check tracking status (adminDb: RLS blocks anon reads on participants)
+  const participant = await loadParticipantForChunk(test_id, tid)
 
   if (!participant) return res.status(404).json({ error: 'Participant not found' })
 
