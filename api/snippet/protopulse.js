@@ -360,13 +360,19 @@
         try {
           testerKey = localStorage.getItem(lsKey)
         } catch (e) {}
+        if (!testerKey) {
+          testerKey = 'pp_' + Math.random().toString(36).slice(2, 14)
+          try {
+            localStorage.setItem(lsKey, testerKey)
+          } catch (e2) {}
+        }
         var ua = navigator.userAgent
         fetch(API_URL + '/api/tests/' + resolvedTestId + '/auto-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tid: newTid,
-            tester_key: testerKey || '',
+            tester_key: testerKey,
             referrer: document.referrer || '',
             browser: detectBrowser(ua),
             device_type: /Mobi|Android/i.test(ua) ? 'mobile' : /Tablet|iPad/i.test(ua) ? 'tablet' : 'desktop'

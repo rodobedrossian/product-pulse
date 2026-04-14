@@ -63,7 +63,11 @@ router.post('/:id/auto-session', async (req, res) => {
   const { id } = req.params
   const { tester_key, referrer, browser, device_type, tid: clientTid } = req.body
 
-  if (!tester_key) return res.status(400).json({ error: 'tester_key is required' })
+  // Blank tester_key (e.g. localStorage cleared) must not block registration — events still use tid.
+  const effectiveTesterKey =
+    typeof tester_key === 'string' && tester_key.trim().length > 0
+      ? tester_key.trim()
+      : `pp_${randomUUID().replace(/-/g, '').slice(0, 16)}`
 
   // Use adminDb for public endpoints — bypasses RLS (tests table is protected)
   const { data: test } = await adminDb.from('tests').select('id, test_type').eq('id', id).single()
@@ -81,7 +85,7 @@ router.post('/:id/auto-session', async (req, res) => {
   const { data: existingTester } = await adminDb
     .from('testers')
     .select('id, session_count')
-    .eq('tester_key', tester_key)
+    .eq('tester_key', effectiveTesterKey)
     .maybeSingle()
 
   if (existingTester) {
@@ -93,7 +97,7 @@ router.post('/:id/auto-session', async (req, res) => {
   } else {
     const { data: newTester, error: testerErr } = await adminDb
       .from('testers')
-      .insert({ test_id: id, tester_key })
+      .insert({ test_id: id, tester_key: effectiveTesterKey })
       .select('id')
       .single()
     if (testerErr) return res.status(500).json({ error: testerErr.message })
@@ -103,6 +107,18 @@ router.post('/:id/auto-session', async (req, res) => {
   // Create a new participant session using the client-provided tid so events already
   // sent under that tid are correctly associated with this participant record.
   const tid = (clientTid && clientTid.length > 4) ? clientTid : randomUUID()
+
+  const { data: existingParticipant } = await adminDb
+    .from('participants')
+    .select('id, tid')
+    .eq('test_id', id)
+    .eq('tid', tid)
+    .maybeSingle()
+
+  if (existingParticipant) {
+    return res.status(200).json({ tid: existingParticipant.tid })
+  }
+
   const { error: partErr } = await adminDb
     .from('participants')
     .insert({
