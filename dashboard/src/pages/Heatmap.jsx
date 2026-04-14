@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
@@ -21,12 +21,14 @@ function loadHeatmapPrefs(testId) {
     const smooth =
       typeof o.smooth === 'number' ? Math.min(100, Math.max(0, o.smooth)) : DEFAULT_SMOOTH
     const space = o.space === 'document' || o.space === 'viewport' ? o.space : 'viewport'
+    const wideChart = o.wideChart === true
     return {
       spread: Math.min(150, Math.max(50, o.spread)),
       intensity: Math.min(100, Math.max(0, o.intensity)),
       overlay: Math.min(90, Math.max(35, o.overlay)),
       smooth,
-      space
+      space,
+      wideChart
     }
   } catch {
     return null
@@ -41,7 +43,11 @@ function saveHeatmapPrefs(testId, prefs) {
   }
 }
 
-/** Canvas height for document-space mode from p95 page dimensions (cap 8000px). */
+/**
+ * Document-mode stage height (px). Uses the same width/height ratio as the API’s
+ * `max_doc_w_px` / `max_doc_h_px` (capped server-side) so normalized `*_doc` points
+ * line up with tiled or full-page backgrounds (`object-fit: contain` on both).
+ */
 function documentCanvasHeight(selected, wrapW) {
   const W = wrapW || 800
   const maxH = selected?.max_doc_h_px
@@ -49,6 +55,25 @@ function documentCanvasHeight(selected, wrapW) {
   if (maxH && maxW) return Math.min(8000, Math.round(W * (maxH / maxW)))
   if (maxH) return Math.min(8000, Math.round((W * maxH) / 1440))
   return Math.round((W * 9) / 16)
+}
+
+function getHeatmapClicksMoves(selected, space) {
+  if (space === 'document') {
+    const cd = selected?.clicks_doc
+    const md = selected?.moves_doc
+    const hasDoc = (cd?.length ?? 0) + (md?.length ?? 0) > 0
+    if (hasDoc) return { clicks: cd || [], moves: md || [] }
+  }
+  return { clicks: selected?.clicks || [], moves: selected?.moves || [] }
+}
+
+function screenshotFetchUrl(testId, objectPath) {
+  if (!objectPath) return null
+  const parts = objectPath.split('/')
+  const eventFile = parts[2]
+  if (!eventFile) return null
+  const eventId = eventFile.split('.')[0]
+  return `${API_BASE}/api/tests/${testId}/events/${eventId}/screenshot`
 }
 
 /**
@@ -235,31 +260,51 @@ export default function Heatmap() {
   const [selected, setSelected] = useState(null)
   const [mode, setMode] = useState('clicks')
   const [bgUrl, setBgUrl] = useState(null)
-  const [tileUrls, setTileUrls] = useState([]) // [{ url, scroll_y_frac, height_frac }]
 
   const [spread, setSpread] = useState(DEFAULT_SPREAD)
   const [intensity, setIntensity] = useState(DEFAULT_INTENSITY)
   const [overlay, setOverlay] = useState(DEFAULT_OVERLAY)
   const [smooth, setSmooth] = useState(DEFAULT_SMOOTH)
   const [space, setSpace] = useState('viewport')
+  const [wideChart, setWideChart] = useState(false)
+  const [docBg, setDocBg] = useState({ full: null, tiles: [] })
 
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
+  const [wrapW, setWrapW] = useState(800)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return undefined
+    const update = () => setWrapW(Math.max(1, Math.round(el.clientWidth || 800)))
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [space, selected?.path, id])
+
+  useLayoutEffect(() => {
     const p = loadHeatmapPrefs(id)
     if (p) {
       setSpread(p.spread)
       setIntensity(p.intensity)
       setOverlay(p.overlay)
       setSmooth(p.smooth ?? DEFAULT_SMOOTH)
-      if (p.space) setSpace(p.space)
+      setSpace(p.space ?? 'viewport')
+      setWideChart(!!p.wideChart)
+    } else {
+      setSpread(DEFAULT_SPREAD)
+      setIntensity(DEFAULT_INTENSITY)
+      setOverlay(DEFAULT_OVERLAY)
+      setSmooth(DEFAULT_SMOOTH)
+      setSpace('viewport')
+      setWideChart(false)
     }
   }, [id])
 
   useEffect(() => {
-    saveHeatmapPrefs(id, { spread, intensity, overlay, smooth, space })
-  }, [id, spread, intensity, overlay, smooth, space])
+    saveHeatmapPrefs(id, { spread, intensity, overlay, smooth, space, wideChart })
+  }, [id, spread, intensity, overlay, smooth, space, wideChart])
 
   useEffect(() => {
     apiFetch(`/api/tests/${id}/heatmap`)
@@ -272,71 +317,93 @@ export default function Heatmap() {
   }, [id])
 
   useEffect(() => {
-    setBgUrl(null)
-    if (!selected?.background_path) return
-    const parts = selected.background_path.split('/')
-    const eventFile = parts[2]
-    if (!eventFile) return
-    const eventId = eventFile.split('.')[0]
-    fetch(`${API_BASE}/api/tests/${id}/events/${eventId}/screenshot`, {
+    let objectUrl = null
+    if (space !== 'viewport' || !selected?.background_path) {
+      setBgUrl(null)
+      return undefined
+    }
+    const shotUrl = screenshotFetchUrl(id, selected.background_path)
+    if (!shotUrl) return undefined
+    fetch(shotUrl, {
       headers: { Authorization: `Bearer ${localStorage.getItem('pp_token') || ''}` }
     })
       .then((r) => (r.ok ? r.blob() : null))
-      .then((b) => (b ? setBgUrl(URL.createObjectURL(b)) : null))
-      .catch(() => {})
-  }, [selected?.background_path, id])
-
-  // Load scroll-section background tiles for document mode
-  useEffect(() => {
-    // Revoke old tile URLs
-    tileUrls.forEach((t) => { if (t.url) URL.revokeObjectURL(t.url) })
-    setTileUrls([])
-    const tiles = selected?.background_tiles
-    if (!tiles?.length) return
-    const auth = { Authorization: `Bearer ${localStorage.getItem('pp_token') || ''}` }
-    let cancelled = false
-    Promise.all(
-      tiles.map((tile) => {
-        const parts = tile.path.split('/')
-        const eventId = (parts[2] || '').split('.')[0]
-        if (!eventId) return Promise.resolve(null)
-        return fetch(`${API_BASE}/api/tests/${id}/events/${eventId}/screenshot`, { headers: auth })
-          .then((r) => (r.ok ? r.blob() : null))
-          .then((b) => b ? { url: URL.createObjectURL(b), scroll_y_frac: tile.scroll_y_frac, height_frac: tile.height_frac } : null)
-          .catch(() => null)
+      .then((b) => {
+        if (b) {
+          objectUrl = URL.createObjectURL(b)
+          setBgUrl(objectUrl)
+        }
       })
-    ).then((results) => {
-      if (!cancelled) setTileUrls(results.filter(Boolean))
-    })
-    return () => { cancelled = true }
-  }, [selected?.background_tiles, id]) // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => {})
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [selected?.background_path, id, space])
+
+  useEffect(() => {
+    let cancelled = false
+    const revoke = []
+    setDocBg({ full: null, tiles: [] })
+    if (space !== 'document' || !selected) return undefined
+
+    const headers = { Authorization: `Bearer ${localStorage.getItem('pp_token') || ''}` }
+
+    ;(async () => {
+      if (selected.background_fullpage_path) {
+        const u = screenshotFetchUrl(id, selected.background_fullpage_path)
+        if (!u || cancelled) return
+        const r = await fetch(u, { headers })
+        if (!r.ok || cancelled) return
+        const blob = await r.blob()
+        if (cancelled) return
+        const obj = URL.createObjectURL(blob)
+        revoke.push(obj)
+        setDocBg({ full: obj, tiles: [] })
+        return
+      }
+      const tiles = selected.background_tiles || []
+      if (!tiles.length) return
+      const urls = []
+      for (const t of tiles) {
+        const su = screenshotFetchUrl(id, t.path)
+        if (!su || cancelled) break
+        const r = await fetch(su, { headers })
+        if (!r.ok || cancelled) break
+        const blob = await r.blob()
+        if (cancelled) break
+        const o = URL.createObjectURL(blob)
+        revoke.push(o)
+        urls.push(o)
+      }
+      if (!cancelled) setDocBg({ full: null, tiles: urls })
+    })()
+
+    return () => {
+      cancelled = true
+      revoke.forEach((u) => URL.revokeObjectURL(u))
+    }
+  }, [
+    id,
+    selected?.path,
+    space,
+    selected?.background_fullpage_path,
+    selected?.background_tiles
+  ])
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
     const wrap = wrapRef.current
     if (!canvas || !selected) return
 
-    const W = wrap?.clientWidth || 800
-    let H
-    if (space === 'document') {
-      H = documentCanvasHeight(selected, W)
-      if (wrap) {
-        wrap.style.height = `${H}px`
-        wrap.style.aspectRatio = 'unset'
-      }
-    } else {
-      H = wrap?.clientHeight || Math.round((W * 9) / 16)
-      if (wrap) {
-        wrap.style.height = ''
-        wrap.style.aspectRatio = ''
-      }
-    }
-
+    const W = Math.max(1, wrap?.clientWidth || wrapW || 800)
+    const H =
+      space === 'document'
+        ? documentCanvasHeight(selected, W)
+        : wrap?.clientHeight || Math.round((W * 9) / 16)
     canvas.width = W
     canvas.height = H
 
-    const clicks = space === 'document' ? selected.clicks_doc || [] : selected.clicks || []
-    const moves = space === 'document' ? selected.moves_doc || [] : selected.moves || []
+    const { clicks, moves } = getHeatmapClicksMoves(selected, space)
     const hasClicks = clicks.length > 0
     const hasMoves = moves.length > 0
 
@@ -355,7 +422,7 @@ export default function Heatmap() {
       gamma: 0.82,
       smooth
     })
-  }, [selected, mode, spread, intensity, smooth, space])
+  }, [selected, mode, spread, intensity, smooth, space, wrapW])
 
   useEffect(() => {
     redraw()
@@ -369,24 +436,23 @@ export default function Heatmap() {
   if (loading) return <p className="pp-loading">Loading heatmap…</p>
   if (error) return <p className="error">Error: {error}</p>
 
+  const { clicks: countClicks, moves: countMoves } = selected
+    ? getHeatmapClicksMoves(selected, space)
+    : { clicks: [], moves: [] }
   const pointCount = selected
-    ? space === 'document'
-      ? mode === 'clicks'
-        ? selected.clicks_doc?.length || 0
-        : mode === 'moves'
-          ? selected.moves_doc?.length || 0
-          : (selected.clicks_doc?.length || 0) + (selected.moves_doc?.length || 0)
-      : mode === 'clicks'
-        ? selected.clicks?.length || 0
-        : mode === 'moves'
-          ? selected.moves?.length || 0
-          : (selected.clicks?.length || 0) + (selected.moves?.length || 0)
+    ? mode === 'clicks'
+      ? countClicks.length
+      : mode === 'moves'
+        ? countMoves.length
+        : countClicks.length + countMoves.length
     : 0
 
-  const hasViewportData =
-    selected && ((selected.clicks?.length ?? 0) > 0 || (selected.moves?.length ?? 0) > 0)
-  const hasDocData =
-    selected && ((selected.clicks_doc?.length ?? 0) > 0 || (selected.moves_doc?.length ?? 0) > 0)
+  const showIncompleteDocBg =
+    space === 'document' &&
+    selected &&
+    !selected.background_fullpage_path &&
+    pointCount > 0 &&
+    (selected.tile_height_frac_sum ?? 0) < 0.9
 
   const hiPercentileLabel = Math.round(98 - (intensity / 100) * 10)
   const hotFractionPct = Math.max(1, 100 - hiPercentileLabel)
@@ -427,7 +493,7 @@ export default function Heatmap() {
         )}
       </aside>
 
-      <main className="pp-heatmap-main">
+      <main className={`pp-heatmap-main${wideChart ? ' pp-heatmap-main--wide' : ''}`}>
         <div className="pp-heatmap-controls">
           <div style={{ minWidth: 0 }}>
             <span className="pp-kicker" style={{ marginBottom: '0.1rem', display: 'block' }}>Heatmap</span>
@@ -447,20 +513,31 @@ export default function Heatmap() {
                 {m === 'clicks' ? '👆 Clicks' : m === 'moves' ? '🖱 Movement' : '⬡ All'}
               </button>
             ))}
-          </div>
-
-          <div className="pp-inline pp-heatmap-space-row" style={{ gap: '0.4rem', flexWrap: 'wrap' }}>
-            {['viewport', 'document'].map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`pp-btn-sm${space === s ? ' primary' : ''}`}
-                onClick={() => setSpace(s)}
-                title={s === 'document' ? 'Scroll-aware coordinates (requires newer snippet data)' : 'Screen coordinates'}
-              >
-                {s === 'viewport' ? '⊡ Viewport' : '↕ Document'}
-              </button>
-            ))}
+            <span className="pp-muted" style={{ margin: '0 0.25rem', fontSize: '0.7rem' }}>
+              |
+            </span>
+            <button
+              type="button"
+              className={`pp-btn-sm${space === 'viewport' ? ' primary' : ''}`}
+              onClick={() => setSpace('viewport')}
+            >
+              Viewport
+            </button>
+            <button
+              type="button"
+              className={`pp-btn-sm${space === 'document' ? ' primary' : ''}`}
+              onClick={() => setSpace('document')}
+              title="Uses full-page or scroll-tile screenshots when available"
+            >
+              Document
+            </button>
+            <button
+              type="button"
+              className={`pp-btn-sm${wideChart ? ' primary' : ''}`}
+              onClick={() => setWideChart((w) => !w)}
+            >
+              Wider chart
+            </button>
           </div>
 
           <div className="pp-heatmap-tuners">
@@ -506,32 +583,13 @@ export default function Heatmap() {
             </label>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
-            <span className="pp-muted" style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-              {pointCount.toLocaleString()} point{pointCount !== 1 ? 's' : ''}
-            </span>
-            {space === 'document' && selected && (() => {
-              const totalClicks = selected.clicks?.length ?? 0
-              const totalMoves = selected.moves?.length ?? 0
-              const docClicks = selected.clicks_doc?.length ?? 0
-              const docMoves = selected.moves_doc?.length ?? 0
-              const total = totalClicks + totalMoves
-              const docTotal = docClicks + docMoves
-              if (total === 0) return null
-              const pct = Math.round((docTotal / total) * 100)
-              return (
-                <span
-                  style={{ fontSize: '0.7rem', whiteSpace: 'nowrap', color: pct < 50 ? 'var(--color-warning, #b45309)' : 'var(--color-success)' }}
-                  title={`${docTotal} of ${total} events have scroll-aware document coordinates. Events captured before the latest snippet update only have viewport coordinates.`}
-                >
-                  {pct}% doc coverage ({docTotal}/{total})
-                </span>
-              )
-            })()}
-          </div>
+          <span className="pp-muted" style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+            {pointCount.toLocaleString()} point{pointCount !== 1 ? 's' : ''}
+          </span>
         </div>
 
-        {!selected || !hasViewportData ? (
+        {!selected ||
+        ((countClicks?.length ?? 0) === 0 && (countMoves?.length ?? 0) === 0) ? (
           <div className="pp-heatmap-empty">
             <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔥</div>
             <p style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>No heatmap data yet</p>
@@ -539,77 +597,68 @@ export default function Heatmap() {
               Make sure the snippet is installed on your prototype and participants have visited this page.
             </p>
           </div>
-        ) : space === 'document' && !hasDocData ? (
-          <div className="pp-heatmap-empty">
-            <p style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>No document-space data for this page</p>
-            <p className="pp-muted" style={{ margin: 0, fontSize: '0.875rem', maxWidth: 420, textAlign: 'center' }}>
-              {(selected?.clicks?.length ?? 0) + (selected?.moves?.length ?? 0) > 0
-                ? <>All {((selected?.clicks?.length ?? 0) + (selected?.moves?.length ?? 0)).toLocaleString()} events on this page were captured before scroll-aware tracking was added. Switch to <strong>Viewport</strong> to see them, or collect new sessions to populate Document mode.</>
-                : <>No events yet. Make sure the snippet is installed.</>}
-            </p>
-          </div>
         ) : (
           <>
+            {showIncompleteDocBg && (
+              <p className="pp-heatmap-incomplete-bg" role="status">
+                Background coverage may be incomplete (missing scroll bands). Enable more captures on the
+                prototype or use a full-page snapshot when available. Heat positions still use document
+                coordinates.
+              </p>
+            )}
             <div
-              className={`pp-heatmap-canvas-wrap${space === 'document' ? ' pp-heatmap-canvas-wrap--document' : ''}`}
+              className={`pp-heatmap-canvas-wrap${
+                space === 'document' ? ' pp-heatmap-canvas-wrap--document' : ''
+              }`}
               ref={wrapRef}
+              style={
+                space === 'document' && selected
+                  ? { height: documentCanvasHeight(selected, wrapW) }
+                  : undefined
+              }
             >
-              {space === 'document' && tileUrls.length > 0 ? (
-                /* Document mode: tile viewport screenshots at their scroll positions */
-                tileUrls.map((tile, i) => (
-                  <img
-                    key={i}
-                    src={tile.url}
-                    alt=""
-                    className="pp-heatmap-tile"
-                    style={{
-                      top: `${(tile.scroll_y_frac * 100).toFixed(2)}%`,
-                      height: `${(tile.height_frac * 100).toFixed(2)}%`
-                    }}
-                    onLoad={i === 0 ? redraw : undefined}
-                  />
-                ))
-              ) : bgUrl ? (
-                /* Viewport mode (or document mode without tiles): single background */
+              {space === 'viewport' && bgUrl && (
                 <img
                   src={bgUrl}
                   alt="Page screenshot"
-                  className={`pp-heatmap-bg${space === 'document' ? ' pp-heatmap-bg--document' : ''}`}
+                  className="pp-heatmap-bg"
                   onLoad={redraw}
                 />
-              ) : null}
+              )}
+              {space === 'document' && docBg.full && (
+                <img
+                  src={docBg.full}
+                  alt="Full page reference"
+                  className="pp-heatmap-bg pp-heatmap-bg--document-full"
+                  onLoad={redraw}
+                />
+              )}
+              {space === 'document' &&
+                !docBg.full &&
+                docBg.tiles.length > 0 &&
+                (selected.background_tiles || []).map((t, i) => {
+                  const src = docBg.tiles[i]
+                  if (!src) return null
+                  return (
+                    <img
+                      key={`${t.path}-${i}`}
+                      src={src}
+                      alt=""
+                      className="pp-heatmap-tile"
+                      style={{
+                        top: `${(t.scroll_y_frac ?? 0) * 100}%`,
+                        height: `${(t.height_frac ?? 0) * 100}%`
+                      }}
+                      onLoad={redraw}
+                    />
+                  )
+                })}
               <canvas
                 ref={canvasRef}
                 className="pp-heatmap-canvas"
                 style={{ opacity: overlay / 100 }}
               />
             </div>
-
-            {space === 'document' && (
-              <div style={{ marginTop: '0.5rem', textAlign: 'center', maxWidth: 560, marginLeft: 'auto', marginRight: 'auto' }}>
-                <p className="pp-muted" style={{ fontSize: '0.75rem', margin: '0 0 0.35rem' }}>
-                  {tileUrls.length > 0
-                    ? `Document-relative heat (scroll-aware). Background reconstructed from ${tileUrls.length} viewport capture${tileUrls.length > 1 ? 's' : ''} at different scroll positions.`
-                    : 'Document-relative heat (scroll-aware). Background shows above-the-fold reference only — new sessions will capture scroll-section tiles.'}
-                </p>
-                {selected?.tile_height_frac_sum != null &&
-                  selected.tile_height_frac_sum < 0.85 &&
-                  tileUrls.length > 0 && (
-                    <p
-                      className="pp-muted"
-                      style={{
-                        fontSize: '0.7rem',
-                        margin: 0,
-                        color: 'var(--color-warning, #b45309)'
-                      }}
-                    >
-                      Background incomplete: viewport tiles cover about{' '}
-                      {Math.round(Math.min(100, selected.tile_height_frac_sum * 100))}% of the inferred page
-                      height. Heat is still accurate; gray bands are missing screenshots.
-                    </p>
-                  )}
-              </div>
-            )}
 
             <div className="pp-heatmap-legend-block">
               <div className="pp-heatmap-legend">

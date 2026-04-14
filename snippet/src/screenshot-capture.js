@@ -9,6 +9,60 @@ function isWindowScrollRoot(el) {
   return !el || el === document.documentElement || el === document.body
 }
 
+var HEATMAP_FP_MAX_W = 1920
+var HEATMAP_FP_MAX_H = 12000
+
+/**
+ * Capped full-document JPEG for heatmap dashboard (optional).
+ * Uses the same scroll root as viewport capture (`window.__ppCaptureScrollRoot`).
+ */
+window.__ppCaptureHeatmapFullPage = function () {
+  var root = window.__ppCaptureScrollRoot
+  if (isWindowScrollRoot(root)) {
+    var docEl = document.documentElement
+    var capW = Math.min(HEATMAP_FP_MAX_W, Math.max(docEl.scrollWidth, window.innerWidth))
+    var capH = Math.min(HEATMAP_FP_MAX_H, Math.max(docEl.scrollHeight, window.innerHeight))
+    var scale = capW > 1680 ? 0.52 : 0.62
+    return html2canvas(docEl, {
+      scale: scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: capW,
+      height: capH,
+      x: 0,
+      y: 0,
+      ignoreElements: ignoreOverlay
+    })
+      .then(function (canvas) {
+        return canvas.toDataURL('image/jpeg', 0.56)
+      })
+      .catch(function () {
+        return null
+      })
+  }
+  var rw = Math.min(HEATMAP_FP_MAX_W, Math.max(root.scrollWidth, root.clientWidth))
+  var rh = Math.min(HEATMAP_FP_MAX_H, Math.max(root.scrollHeight, root.clientHeight))
+  var scaleInner = rw > 1680 ? 0.52 : 0.62
+  return html2canvas(root, {
+    scale: scaleInner,
+    useCORS: true,
+    allowTaint: true,
+    logging: false,
+    width: rw,
+    height: rh,
+    x: 0,
+    y: 0,
+    ignoreElements: ignoreOverlay
+  })
+    .then(function (canvas) {
+      return canvas.toDataURL('image/jpeg', 0.56)
+    })
+    .catch(function () {
+      return null
+    })
+}
+
 /**
  * Captures the visible viewport as a JPEG data URL.
  * `window.__ppCaptureScrollRoot` (set by the tracker) selects window vs inner scroll container.

@@ -395,6 +395,17 @@ router.get('/:id', requireAuth, async (req, res) => {
 // Tallest observed document dimensions for this path (capped) — aligns heatmap stage
 // with long pages and reduces gray gaps vs median-of-mixed sessions.
 const HEATMAP_DOC_PX_CAP = 50000
+/** Max scroll-band tiles returned per page (viewport captures); raised slightly for inner-scroll + scrollend coverage. */
+const HEATMAP_TILE_CAP = 50
+
+/**
+ * When multiple events map to the same scroll band, keep the tile whose scroll_y is
+ * lowest (closest to the top of that band) so headers / band-0 alignment stay stable.
+ */
+function upsertScreenshotBand(bandMap, band, tile) {
+  const prev = bandMap.get(band)
+  if (!prev || tile.scroll_y < prev.scroll_y) bandMap.set(band, tile)
+}
 
 function maxCapped(arr, cap) {
   if (!arr.length) return null
@@ -449,10 +460,19 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
         doc_w_px_values: [],
         background: null,
         // Scroll-section tiles: latest screenshot per scroll band (chronological merge)
-        screenshotBands: new Map() // band_index → { path, scroll_y, vh }
+        screenshotBands: new Map(), // band_index → { path, scroll_y, vh }
+        background_fullpage: null // object path from metadata.heatmap_fullpage (optional)
       })
     }
     const page = pageMap.get(path)
+
+    if (
+      ev.type === 'mousemove_batch' &&
+      ev.screenshot_object_path &&
+      ev.metadata?.heatmap_fullpage
+    ) {
+      page.background_fullpage = ev.screenshot_object_path
+    }
 
     if (ev.type === 'click' && ev.x != null) {
       page.clicks.push({ x: ev.x, y: ev.y })
@@ -474,7 +494,7 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
         }
         if (scrollY != null && scrollY >= 0) {
           const band = Math.floor(scrollY / ev.vh)
-          page.screenshotBands.set(band, {
+          upsertScreenshotBand(page.screenshotBands, band, {
             path: ev.screenshot_object_path,
             scroll_y: scrollY,
             vh: ev.vh
@@ -505,7 +525,7 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
         }
         if (scrollYBatch != null && scrollYBatch >= 0) {
           const band = Math.floor(scrollYBatch / ev.vh)
-          page.screenshotBands.set(band, {
+          upsertScreenshotBand(page.screenshotBands, band, {
             path: ev.screenshot_object_path,
             scroll_y: scrollYBatch,
             vh: ev.vh
@@ -522,7 +542,7 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
     // Build sorted tile array from scroll-section screenshots
     const tiles = Array.from(p.screenshotBands.values())
       .sort((a, b) => a.scroll_y - b.scroll_y)
-      .slice(0, 40) // cap payload; inner-scroll + flush-on-scroll yields more bands
+      .slice(0, HEATMAP_TILE_CAP)
       .map((t) => ({
         path: t.path,
         scroll_y_frac: docH ? t.scroll_y / docH : 0,
@@ -544,6 +564,7 @@ router.get('/:id/heatmap', requireAuth, async (req, res) => {
       max_doc_w_px: docW,
       background_path: p.background ?? null,
       background_tiles: tiles.length > 0 ? tiles : null,
+      background_fullpage_path: p.background_fullpage ?? null,
       tile_height_frac_sum: tileHeightFracSum
     }
   })

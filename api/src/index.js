@@ -43,7 +43,8 @@ app.use('/snippet', express.static(join(__dirname, '../snippet')))
 
 // Higher body limits: replay chunks ~8 MB, events with screenshots ~5 MB
 app.use('/api/replay', express.json({ limit: '8mb' }))
-app.use('/api/events', express.json({ limit: '8mb' }))
+// Heatmap full-page JPEGs (metadata.heatmap_fullpage) can approach 10 MB decoded → larger base64 payloads
+app.use('/api/events', express.json({ limit: '14mb' }))
 app.use(express.json())
 
 // Health check for Railway deployment

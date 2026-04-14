@@ -22,6 +22,22 @@
     .c { background: #bfdbfe; }
     .tall { height: 120vh; padding: 1rem; background: linear-gradient(#fff, #e2e8f0); }
     button { margin: 0.25rem; padding: 0.5rem 0.75rem; cursor: pointer; }
+    /* Fixed header + long body: verify band-0 top tile + document alignment */
+    #fixedHeaderCase .sticky-h {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    #fixedHeaderCase .long {
+      min-height: 220vh;
+      padding: 1rem;
+      background: linear-gradient(180deg, #fef3c7 0%, #fde68a 40%, #fcd34d 100%);
+    }
   </style>
 </head>
 <body>
@@ -34,6 +50,22 @@
       <p>Window-scroll content</p>
       <button type="button">Button A</button>
       <button type="button">Button B</button>
+    </div>
+  </div>
+
+  <div class="case" id="fixedHeaderCase">
+    <h2>Fixed header + long body</h2>
+    <p>
+      After load at <code>scrollTop === 0</code>, the snippet should schedule a top-of-page band capture.
+      Scroll through several viewport heights; throttled scroll-end tiles should add bands. Dashboard Document
+      mode should align heat with tiles or full-page image.
+    </p>
+    <div class="sticky-h">Fixed header bar</div>
+    <div class="long">
+      <p>Long content below the sticky header.</p>
+      <button type="button">Mid-page CTA</button>
+      <p style="margin-top: 80vh">Lower fold target</p>
+      <button type="button">Bottom CTA</button>
     </div>
   </div>
 

@@ -5,6 +5,8 @@ import adminDb from '../db-admin.js'
 const router = Router()
 const SCREENSHOT_BUCKET = 'event-screenshots'
 const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024 // 4 MB — room for full-viewport JPEG at scale 1
+/** Optional capped full-page heatmap capture (metadata.heatmap_fullpage) — isolated budget. */
+const MAX_HEATMAP_FULLPAGE_SCREENSHOT_BYTES = 10 * 1024 * 1024
 
 function matchesGoal(event, def) {
   if (!def || !def.type) return false
@@ -74,7 +76,11 @@ router.post('/', async (req, res) => {
       const match = screenshot.match(/^data:image\/(\w+);base64,(.+)$/)
       if (match) {
         const buf = Buffer.from(match[2], 'base64')
-        if (buf.length <= MAX_SCREENSHOT_BYTES) {
+        const maxBytes =
+          metadata?.heatmap_fullpage === true
+            ? MAX_HEATMAP_FULLPAGE_SCREENSHOT_BYTES
+            : MAX_SCREENSHOT_BYTES
+        if (buf.length <= maxBytes) {
           const ext = match[1] === 'jpeg' || match[1] === 'jpg' ? 'jpg' : 'png'
           const key = `${test_id}/${tid}/${inserted.id}.${ext}`
           const { error: upErr } = await adminDb.storage

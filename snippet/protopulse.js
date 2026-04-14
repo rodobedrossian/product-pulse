@@ -538,7 +538,12 @@
       if (idlePaused && type !== 'mousemove_batch') resumeAfterIdle()
       if (_trackingStopped) return
       if (idlePaused) return
-      noteActivity()
+      var _hmSys =
+        metadata &&
+        (metadata.heatmap_top_tile ||
+          metadata.heatmap_scroll_tile ||
+          metadata.heatmap_fullpage)
+      if (!_hmSys) noteActivity()
       var cleanedUrl = cleanUrl(url || location.href)
       var ts = new Date().toISOString()
       var payload = {
@@ -581,14 +586,28 @@
         }).then(handleEventsResponse).catch(function () {})
       }
 
-      if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
+      var wantsFullPage = metadata && metadata.heatmap_fullpage === true
+      var ssTimeout = wantsFullPage ? 20000 : 3000
+      var capFn = null
+      if (_screenshotReady) {
+        if (wantsFullPage && typeof window.__ppCaptureHeatmapFullPage === 'function') {
+          capFn = function () {
+            return window.__ppCaptureHeatmapFullPage()
+          }
+        } else if (typeof window.__ppCaptureScreenshot === 'function') {
+          capFn = function () {
+            return window.__ppCaptureScreenshot()
+          }
+        }
+      }
+      if (capFn) {
         syncScrollRootForCapture()
         var _ssTimedOut = false
         var _ssTimer = setTimeout(function () {
           _ssTimedOut = true
           postEvent(payload) // timeout — send without screenshot
-        }, 3000)
-        window.__ppCaptureScreenshot().then(function (dataUrl) {
+        }, ssTimeout)
+        capFn().then(function (dataUrl) {
           if (_ssTimedOut) return // already sent
           clearTimeout(_ssTimer)
           if (dataUrl) payload.screenshot = dataUrl
@@ -602,8 +621,101 @@
         postEvent(payload)
       }
 
-      // Notify overlay (non-blocking)
-      if (_ppOnEvent) _ppOnEvent(type, selector || null, cleanedUrl)
+      // Notify overlay (non-blocking); skip synthetic heatmap-only events
+      if (_ppOnEvent && !_hmSys) _ppOnEvent(type, selector || null, cleanedUrl)
+    }
+
+    // --- Heatmap background coverage (viewport tiles + optional full-page) ---
+    function heatmapPathKey() {
+      try {
+        return new URL(location.href).pathname || '/'
+      } catch (ePk) {
+        return location.pathname || '/'
+      }
+    }
+    function heatmapSessionStorageKey(suffix) {
+      return '__pp_hm_' + suffix + '_' + resolvedTestId + '_' + heatmapPathKey()
+    }
+
+    /** One debounced attempt to capture scroll band 0 so document heatmaps have a top tile. */
+    function scheduleHeatmapTopBandCapture() {
+      var capKey = heatmapSessionStorageKey('top0')
+      try {
+        if (sessionStorage.getItem(capKey)) return
+      } catch (eSs) {}
+      var tries = 0
+      function tick() {
+        if (_trackingStopped || idlePaused) return
+        tries++
+        if (!_screenshotReady || typeof window.__ppCaptureScreenshot !== 'function') {
+          if (tries < 30) setTimeout(tick, 400)
+          return
+        }
+        var sm = scrollMetrics()
+        if (Math.round(sm.scrollTop) !== 0) {
+          if (tries < 24) setTimeout(tick, 500)
+          return
+        }
+        try {
+          sessionStorage.setItem(capKey, '1')
+        } catch (eSet) {}
+        send(
+          'mousemove_batch',
+          null,
+          location.href,
+          { points: [], heatmap_top_tile: true },
+          { vw: Math.round(sm.viewportW), vh: Math.round(sm.viewportH) }
+        )
+      }
+      setTimeout(tick, 550)
+    }
+
+    var _hmScrollDebounceTimer = null
+    var _hmLastScrollTileBand = null
+    var _hmLastScrollTileAt = 0
+    function flushHeatmapScrollTile() {
+      if (_trackingStopped || idlePaused) return
+      if (!_screenshotReady || typeof window.__ppCaptureScreenshot !== 'function') return
+      var sm = scrollMetrics()
+      var vh = Math.max(1, Math.round(sm.viewportH))
+      var band = Math.floor(Math.round(sm.scrollTop) / vh)
+      var now = Date.now()
+      if (now - _hmLastScrollTileAt < 8000) return
+      if (_hmLastScrollTileBand === band) return
+      _hmLastScrollTileBand = band
+      _hmLastScrollTileAt = now
+      send(
+        'mousemove_batch',
+        null,
+        location.href,
+        { points: [], heatmap_scroll_tile: true },
+        { vw: Math.round(sm.viewportW), vh: vh }
+      )
+    }
+    function onHeatmapScrollDebounce() {
+      clearTimeout(_hmScrollDebounceTimer)
+      _hmScrollDebounceTimer = setTimeout(flushHeatmapScrollTile, 800)
+    }
+    document.addEventListener('scroll', onHeatmapScrollDebounce, true)
+
+    /** Once per path+session: capped full-page JPEG for dashboard document mode (fallback if tiles sparse). */
+    function maybeScheduleHeatmapFullPage() {
+      var fpKey = heatmapSessionStorageKey('fullpg')
+      try {
+        if (sessionStorage.getItem(fpKey)) return
+      } catch (eFp) {}
+      var sm = scrollMetrics()
+      if (sm.contentH > 14000 || sm.contentH < 200) return
+      setTimeout(function () {
+        if (_trackingStopped || idlePaused) return
+        ensureScreenshotLib(function () {
+          if (typeof window.__ppCaptureHeatmapFullPage !== 'function') return
+          try {
+            sessionStorage.setItem(fpKey, '1')
+          } catch (eFp2) {}
+          send('mousemove_batch', null, location.href, { points: [], heatmap_fullpage: true }, null)
+        })
+      }, 900)
     }
 
     // Document-space coords for heatmaps (scroll-aware). Uses same scroll root as screenshots.
@@ -680,6 +792,7 @@
           text ? { text: text } : null,
           vp
         )
+        maybeScheduleHeatmapFullPage()
       },
       true
     )
@@ -864,7 +977,9 @@
 
     // ─── SCREENSHOT CAPTURE ──────────────────────────────────────────────────
     // Pre-load html2canvas so it's ready before the first click event fires.
-    ensureScreenshotLib(function () {})
+    ensureScreenshotLib(function () {
+      scheduleHeatmapTopBandCapture()
+    })
 
     // ─── PARTICIPANT TASK OVERLAY ──────────────────────────────────────────────
     // For scenario tests only. Shows the current task in a floating card and plays
