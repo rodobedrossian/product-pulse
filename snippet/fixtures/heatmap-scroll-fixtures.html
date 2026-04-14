@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heatmap scroll fixtures</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    h1 { margin: 0; padding: 1rem; background: #1e293b; color: #fff; font-size: 1rem; }
+    .case { padding: 1rem; border-bottom: 1px solid #e2e8f0; }
+    .case h2 { font-size: 0.85rem; margin: 0 0 0.5rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    #innerScroll {
+      height: 180px;
+      overflow: auto;
+      border: 2px dashed #94a3b8;
+      padding: 8px;
+      background: #f8fafc;
+    }
+    #innerScroll .block { height: 120px; margin-bottom: 8px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+    .a { background: #fecaca; }
+    .b { background: #bbf7d0; }
+    .c { background: #bfdbfe; }
+    .tall { height: 120vh; padding: 1rem; background: linear-gradient(#fff, #e2e8f0); }
+    button { margin: 0.25rem; padding: 0.5rem 0.75rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Manual QA: open with test link params <code>__tid</code> / <code>__test_id</code> and snippet</h1>
+
+  <div class="case">
+    <h2>Window scroll</h2>
+    <p>Scroll the page; click and move. Heatmap Document mode should align with viewport tiles.</p>
+    <div class="tall">
+      <p>Window-scroll content</p>
+      <button type="button">Button A</button>
+      <button type="button">Button B</button>
+    </div>
+  </div>
+
+  <div class="case">
+    <h2>Inner scroll container</h2>
+    <p>Set <code>ProtoPulse.scrollRootSelector = '#innerScroll'</code> if auto-detection picks window instead.</p>
+    <div id="innerScroll">
+      <div class="block a">Band 1</div>
+      <div class="block b">Band 2</div>
+      <div class="block c">Band 3</div>
+    </div>
+    <button type="button">Outside inner scroll</button>
+  </div>
+</body>
+</html>

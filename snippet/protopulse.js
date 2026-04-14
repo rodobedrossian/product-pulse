@@ -7,6 +7,13 @@
   // Override: window.ProtoPulse = { ..., sessionIdleMs: 5 * 60 * 1000 }
   var SESSION_IDLE_MS =
     typeof cfg.sessionIdleMs === 'number' && cfg.sessionIdleMs > 0 ? cfg.sessionIdleMs : 3 * 60 * 1000
+  // Mousemove batching: shorter windows + flush on scroll keep document coords aligned with one screenshot.
+  var MOVE_FLUSH_MS =
+    typeof cfg.moveFlushMs === 'number' && cfg.moveFlushMs > 0 ? cfg.moveFlushMs : 2500
+  var MOVE_FLUSH_SCROLL_PX =
+    typeof cfg.moveFlushScrollPx === 'number' && cfg.moveFlushScrollPx > 0 ? cfg.moveFlushScrollPx : 40
+  var MOVE_BATCH_MAX_POINTS =
+    typeof cfg.moveBatchMaxPoints === 'number' && cfg.moveBatchMaxPoints > 0 ? cfg.moveBatchMaxPoints : 40
 
   // --- Read tracking params ---
   var params = new URLSearchParams(location.search)
@@ -446,6 +453,77 @@
       document.head.appendChild(sc)
     }
 
+    // --- Scroll root (window vs inner scroll container) for doc coords + screenshots ---
+    function resolveScrollRoot() {
+      var g = window.ProtoPulse || {}
+      if (g.scrollRootSelector) {
+        try {
+          var picked = document.querySelector(g.scrollRootSelector)
+          if (picked) return picked
+        } catch (eSel) {}
+      }
+      var docEl = document.documentElement
+      var winScroll = Math.max(0, docEl.scrollHeight - window.innerHeight)
+      var best = docEl
+      var bestScroll = winScroll
+      if (document.body) {
+        var kids = document.body.children
+        for (var i = 0; i < kids.length; i++) {
+          var el = kids[i]
+          if (!el || el.nodeType !== 1) continue
+          var st = window.getComputedStyle(el)
+          var oy = st.overflowY
+          var ox = st.overflowX
+          var scrollable = oy === 'auto' || oy === 'scroll' || ox === 'auto' || ox === 'scroll'
+          if (!scrollable) continue
+          var delta = el.scrollHeight - el.clientHeight
+          if (delta > bestScroll + 20) {
+            bestScroll = delta
+            best = el
+          }
+        }
+      }
+      return best
+    }
+
+    function scrollMetrics() {
+      var root = resolveScrollRoot()
+      var isWin = root === document.documentElement || root === document.body
+      if (isWin) {
+        var dh = Math.max(document.documentElement.scrollHeight, window.innerHeight)
+        var dw = Math.max(document.documentElement.scrollWidth, window.innerWidth)
+        return {
+          el: root,
+          isWindow: true,
+          scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+          scrollLeft: window.scrollX || document.documentElement.scrollLeft || 0,
+          contentH: dh,
+          contentW: dw,
+          viewportW: window.innerWidth,
+          viewportH: window.innerHeight
+        }
+      }
+      var r = root.getBoundingClientRect()
+      return {
+        el: root,
+        isWindow: false,
+        scrollTop: root.scrollTop,
+        scrollLeft: root.scrollLeft,
+        contentH: Math.max(root.scrollHeight, 1),
+        contentW: Math.max(root.scrollWidth, 1),
+        viewportW: Math.max(r.width, 1),
+        viewportH: Math.max(r.height, 1)
+      }
+    }
+
+    function syncScrollRootForCapture() {
+      try {
+        window.__ppCaptureScrollRoot = scrollMetrics().el
+      } catch (eCap) {
+        window.__ppCaptureScrollRoot = document.documentElement
+      }
+    }
+
     // --- Core send function ---
     // Sends the event immediately (without screenshot), then fires a follow-up
     // request with the screenshot attached once html2canvas finishes.
@@ -466,8 +544,9 @@
         metadata: metadata || null,
         timestamp: ts
       }
-      // Always include scroll offset so screenshot tiles can be positioned in document mode
-      payload.scroll_y = Math.round(window.scrollY || 0)
+      var sm0 = scrollMetrics()
+      // Vertical scroll offset of the active scroll root (used for heatmap tiling)
+      payload.scroll_y = Math.round(sm0.scrollTop)
 
       if (coords) {
         payload.x  = coords.x
@@ -487,6 +566,7 @@
       }
 
       if (_screenshotReady && typeof window.__ppCaptureScreenshot === 'function') {
+        syncScrollRootForCapture()
         window.__ppCaptureScreenshot().then(function (dataUrl) {
           if (dataUrl) payload.screenshot = dataUrl
           fetch(API_URL + '/api/events', {
@@ -514,14 +594,26 @@
       if (_ppOnEvent) _ppOnEvent(type, selector || null, cleanedUrl)
     }
 
-    // Document-space coords for heatmaps (scroll-aware). Sampled at event time.
+    // Document-space coords for heatmaps (scroll-aware). Uses same scroll root as screenshots.
     function docCoords(clientX, clientY) {
-      var dh = Math.max(document.documentElement.scrollHeight, window.innerHeight)
-      var dw = Math.max(document.documentElement.scrollWidth, window.innerWidth)
+      var sm = scrollMetrics()
+      var dh = sm.contentH
+      var dw = sm.contentW
       if (!dh || !dw) return null
+      if (sm.isWindow) {
+        return {
+          doc_x:    Math.min(1, Math.max(0, (window.scrollX + clientX) / dw)),
+          doc_y:    Math.min(1, Math.max(0, (window.scrollY + clientY) / dh)),
+          doc_w_px: dw,
+          doc_h_px: dh
+        }
+      }
+      var r = sm.el.getBoundingClientRect()
+      var relX = clientX - r.left + sm.scrollLeft
+      var relY = clientY - r.top + sm.scrollTop
       return {
-        doc_x:    Math.min(1, Math.max(0, (window.scrollX + clientX) / dw)),
-        doc_y:    Math.min(1, Math.max(0, (window.scrollY + clientY) / dh)),
+        doc_x:    Math.min(1, Math.max(0, relX / dw)),
+        doc_y:    Math.min(1, Math.max(0, relY / dh)),
         doc_w_px: dw,
         doc_h_px: dh
       }
@@ -544,9 +636,23 @@
       'click',
       function (e) {
         var text = getClickText(e.target)
-        var vp = {
-          x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight,
-          vw: window.innerWidth, vh: window.innerHeight
+        var smc = scrollMetrics()
+        var vp
+        if (smc.isWindow) {
+          vp = {
+            x: e.clientX / window.innerWidth,
+            y: e.clientY / window.innerHeight,
+            vw: window.innerWidth,
+            vh: window.innerHeight
+          }
+        } else {
+          var rc = smc.el.getBoundingClientRect()
+          vp = {
+            x: (e.clientX - rc.left) / smc.viewportW,
+            y: (e.clientY - rc.top) / smc.viewportH,
+            vw: Math.round(smc.viewportW),
+            vh: Math.round(smc.viewportH)
+          }
         }
         var dc = docCoords(e.clientX, e.clientY)
         if (dc) {
@@ -566,27 +672,12 @@
       true
     )
 
-    // --- Mouse-movement heatmap (batched to keep event volume low) ---
+    // --- Mouse-movement heatmap (batched; flush on interval, scroll, resize, max points) ---
     ;(function () {
       var _moveBuf = []
       var _lastMove = 0
-      document.addEventListener('mousemove', function (e) {
-        var now = Date.now()
-        if (now - _lastMove < 500) return   // sample at most 2 pts/s
-        _lastMove = now
-        var dc = docCoords(e.clientX, e.clientY)
-        var pt = {
-          x: +(e.clientX / window.innerWidth).toFixed(4),
-          y: +(e.clientY / window.innerHeight).toFixed(4)
-        }
-        if (dc) {
-          pt.dx = +dc.doc_x.toFixed(4)
-          pt.dy = +dc.doc_y.toFixed(4)
-          pt.dh = dc.doc_h_px
-          pt.dw = dc.doc_w_px
-        }
-        _moveBuf.push(pt)
-      })
+      var _lastScrollFlushTop = null
+
       function flushMoves() {
         if (!_moveBuf.length || !liveTid) return
         if (idlePaused) {
@@ -594,11 +685,60 @@
           return
         }
         var pts = _moveBuf.splice(0)
-        send('mousemove_batch', null, location.href, { points: pts },
-             { vw: window.innerWidth, vh: window.innerHeight })
+        var smf = scrollMetrics()
+        send(
+          'mousemove_batch',
+          null,
+          location.href,
+          { points: pts },
+          {
+            vw: Math.round(smf.viewportW),
+            vh: Math.round(smf.viewportH)
+          }
+        )
       }
-      setInterval(flushMoves, 10000)
+
+      function maybeFlushOnScroll() {
+        if (!_moveBuf.length) return
+        var st = Math.round(scrollMetrics().scrollTop)
+        if (_lastScrollFlushTop == null) {
+          _lastScrollFlushTop = st
+          return
+        }
+        if (Math.abs(st - _lastScrollFlushTop) >= MOVE_FLUSH_SCROLL_PX) {
+          _lastScrollFlushTop = st
+          flushMoves()
+        }
+      }
+
+      document.addEventListener('mousemove', function (e) {
+        var now = Date.now()
+        if (now - _lastMove < 500) return   // sample at most 2 pts/s
+        _lastMove = now
+        var smm = scrollMetrics()
+        var pt = {
+          x: +(e.clientX / (smm.isWindow ? window.innerWidth : smm.viewportW)).toFixed(4),
+          y: +(e.clientY / (smm.isWindow ? window.innerHeight : smm.viewportH)).toFixed(4),
+          sy: Math.round(smm.scrollTop)
+        }
+        var dc = docCoords(e.clientX, e.clientY)
+        if (dc) {
+          pt.dx = +dc.doc_x.toFixed(4)
+          pt.dy = +dc.doc_y.toFixed(4)
+          pt.dh = dc.doc_h_px
+          pt.dw = dc.doc_w_px
+        }
+        _moveBuf.push(pt)
+        if (_moveBuf.length >= MOVE_BATCH_MAX_POINTS) flushMoves()
+      })
+
+      setInterval(flushMoves, MOVE_FLUSH_MS)
       window.addEventListener('pagehide', flushMoves)
+      window.addEventListener('resize', function () {
+        _lastScrollFlushTop = null
+        flushMoves()
+      })
+      document.addEventListener('scroll', maybeFlushOnScroll, true)
     })()
 
     // --- Input change tracking (selector only, never the value) ---

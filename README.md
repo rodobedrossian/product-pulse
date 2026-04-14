@@ -117,6 +117,17 @@ In the dashboard, go to a test's detail page to get the ready-to-copy snippet ta
 - Place the `<script>` tag **without** the `async` attribute so `document.currentScript` is available.
 - The snippet reads `__tid` and `__test_id` from the URL query string automatically when a participant opens their unique link.
 
+**Heatmap / scroll (optional `window.ProtoPulse` fields):**
+
+| Field | Purpose |
+| --- | --- |
+| `scrollRootSelector` | CSS selector for the scrollable element when the page scrolls inside a div (not `window`). |
+| `moveFlushMs` | How often buffered mousemove points flush (default `2500`). |
+| `moveFlushScrollPx` | Flush early when vertical scroll changes by this many pixels (default `40`). |
+| `moveBatchMaxPoints` | Max points per batch before flush (default `40`). |
+
+Document-mode heatmaps use **Viewport** as the fallback when the background is incomplete (missing scroll tiles). Rebuild `screenshot-bundle.js` after changing [`snippet/src/screenshot-capture.js`](snippet/src/screenshot-capture.js); copy outputs under `api/snippet/` for the API static route.
+
 ### Custom Events
 
 ```javascript
