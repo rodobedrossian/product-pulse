@@ -7,6 +7,8 @@ const SCREENSHOT_BUCKET = 'event-screenshots'
 const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024 // 4 MB — room for full-viewport JPEG at scale 1
 /** Full-page heatmap capture: same 4 MB cap. On a 512 MB container, 10 MB payloads cause OOM. */
 const MAX_HEATMAP_FULLPAGE_SCREENSHOT_BYTES = 4 * 1024 * 1024
+/** When false (default), ignore `screenshot` on events to save memory (snippet ships without screenshots). */
+const ACCEPT_EVENT_SCREENSHOTS = process.env.ACCEPT_EVENT_SCREENSHOTS === 'true'
 
 function matchesGoal(event, def) {
   if (!def || !def.type) return false
@@ -26,13 +28,13 @@ function matchesGoal(event, def) {
 
 // POST /api/events — receive events from the snippet
 router.post('/', async (req, res) => {
+  const b = req.body || {}
   const {
     tid, test_id, type, selector, url, metadata, timestamp,
     x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, scroll_y
-  } = req.body
-  // Extract screenshot separately so we can free the large base64 string after decoding
-  let screenshot = req.body.screenshot || null
-  // Release the parsed body reference early — screenshot can be several MB of base64
+  } = b
+  let screenshot = ACCEPT_EVENT_SCREENSHOTS && b.screenshot ? b.screenshot : null
+  if (b.screenshot) delete b.screenshot
   req.body = null
 
   if (!tid || !test_id || !type || !timestamp) {
