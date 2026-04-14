@@ -9,8 +9,8 @@ function isWindowScrollRoot(el) {
   return !el || el === document.documentElement || el === document.body
 }
 
-var HEATMAP_FP_MAX_W = 1920
-var HEATMAP_FP_MAX_H = 12000
+var HEATMAP_FP_MAX_W = 1440
+var HEATMAP_FP_MAX_H = 6000
 
 /**
  * Capped full-document JPEG for heatmap dashboard (optional).
@@ -22,7 +22,7 @@ window.__ppCaptureHeatmapFullPage = function () {
     var docEl = document.documentElement
     var capW = Math.min(HEATMAP_FP_MAX_W, Math.max(docEl.scrollWidth, window.innerWidth))
     var capH = Math.min(HEATMAP_FP_MAX_H, Math.max(docEl.scrollHeight, window.innerHeight))
-    var scale = capW > 1680 ? 0.52 : 0.62
+    var scale = capW > 1200 ? 0.45 : 0.55
     return html2canvas(docEl, {
       scale: scale,
       useCORS: true,
@@ -35,7 +35,7 @@ window.__ppCaptureHeatmapFullPage = function () {
       ignoreElements: ignoreOverlay
     })
       .then(function (canvas) {
-        return canvas.toDataURL('image/jpeg', 0.56)
+        return canvas.toDataURL('image/jpeg', 0.42)
       })
       .catch(function () {
         return null
@@ -43,7 +43,7 @@ window.__ppCaptureHeatmapFullPage = function () {
   }
   var rw = Math.min(HEATMAP_FP_MAX_W, Math.max(root.scrollWidth, root.clientWidth))
   var rh = Math.min(HEATMAP_FP_MAX_H, Math.max(root.scrollHeight, root.clientHeight))
-  var scaleInner = rw > 1680 ? 0.52 : 0.62
+  var scaleInner = rw > 1200 ? 0.45 : 0.55
   return html2canvas(root, {
     scale: scaleInner,
     useCORS: true,
@@ -56,7 +56,7 @@ window.__ppCaptureHeatmapFullPage = function () {
     ignoreElements: ignoreOverlay
   })
     .then(function (canvas) {
-      return canvas.toDataURL('image/jpeg', 0.56)
+      return canvas.toDataURL('image/jpeg', 0.42)
     })
     .catch(function () {
       return null

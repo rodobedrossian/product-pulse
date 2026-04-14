@@ -17,8 +17,8 @@ function mergedKey(testId, tid) {
 
 /** Participant row must be readable without a user JWT (snippet has no Supabase session). Use service role. */
 async function loadParticipantForChunk(test_id, tid) {
-  const attempts = 8
-  const delayMs = 120
+  const attempts = 12
+  const delayMs = 250
   for (let i = 0; i < attempts; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, delayMs))
     const { data } = await adminDb
@@ -40,13 +40,14 @@ router.post('/replay/chunk', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: tid, test_id, part_index, events' })
   }
 
-  // Validate participant and check tracking status (adminDb: RLS blocks anon reads on participants)
+  // Try to find the participant. For observational tests the auto-session call may
+  // still be in flight, so we retry for a few seconds. If the participant never
+  // appears we still store the chunk — the session_replays row just gets a null
+  // participant_id (which can be backfilled later).
   const participant = await loadParticipantForChunk(test_id, tid)
 
-  if (!participant) return res.status(404).json({ error: 'Participant not found' })
-
   // If moderator stopped tracking, signal the replay bundle to halt
-  if (participant.tracking_stopped_at) {
+  if (participant?.tracking_stopped_at) {
     return res.status(200).json({ stop: true })
   }
 
@@ -71,7 +72,7 @@ router.post('/replay/chunk', async (req, res) => {
     .upsert({
       test_id,
       tid,
-      participant_id: participant.id,
+      participant_id: participant?.id ?? null,
       status: 'recording',
       chunk_count: part_index + 1,
       total_bytes: byteCount,

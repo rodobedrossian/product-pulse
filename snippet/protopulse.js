@@ -589,7 +589,7 @@
       }
 
       var wantsFullPage = metadata && metadata.heatmap_fullpage === true
-      var ssTimeout = wantsFullPage ? 20000 : 3000
+      var ssTimeout = wantsFullPage ? 8000 : 3000
       var capFn = null
       if (_screenshotReady) {
         if (wantsFullPage && typeof window.__ppCaptureHeatmapFullPage === 'function') {
@@ -708,7 +708,7 @@
         if (sessionStorage.getItem(fpKey)) return
       } catch (eFp) {}
       var sm = scrollMetrics()
-      if (sm.contentH > 14000 || sm.contentH < 200) return
+      if (sm.contentH > 6000 || sm.contentH < 200) return
       setTimeout(function () {
         if (_trackingStopped || idlePaused) return
         ensureScreenshotLib(function () {

@@ -5,8 +5,8 @@ import adminDb from '../db-admin.js'
 const router = Router()
 const SCREENSHOT_BUCKET = 'event-screenshots'
 const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024 // 4 MB — room for full-viewport JPEG at scale 1
-/** Optional capped full-page heatmap capture (metadata.heatmap_fullpage) — isolated budget. */
-const MAX_HEATMAP_FULLPAGE_SCREENSHOT_BYTES = 10 * 1024 * 1024
+/** Full-page heatmap capture: same 4 MB cap. On a 512 MB container, 10 MB payloads cause OOM. */
+const MAX_HEATMAP_FULLPAGE_SCREENSHOT_BYTES = 4 * 1024 * 1024
 
 function matchesGoal(event, def) {
   if (!def || !def.type) return false
@@ -27,9 +27,13 @@ function matchesGoal(event, def) {
 // POST /api/events — receive events from the snippet
 router.post('/', async (req, res) => {
   const {
-    tid, test_id, type, selector, url, metadata, timestamp, screenshot,
+    tid, test_id, type, selector, url, metadata, timestamp,
     x, y, vw, vh, doc_x, doc_y, doc_w_px, doc_h_px, scroll_y
   } = req.body
+  // Extract screenshot separately so we can free the large base64 string after decoding
+  let screenshot = req.body.screenshot || null
+  // Release the parsed body reference early — screenshot can be several MB of base64
+  req.body = null
 
   if (!tid || !test_id || !type || !timestamp) {
     return res.status(400).json({ error: 'Missing required fields: tid, test_id, type, timestamp' })
@@ -74,14 +78,17 @@ router.post('/', async (req, res) => {
   if (screenshot && inserted?.id) {
     try {
       const match = screenshot.match(/^data:image\/(\w+);base64,(.+)$/)
+      // Free the base64 string immediately — it can be several MB
+      screenshot = null
       if (match) {
+        const imgType = match[1]
         const buf = Buffer.from(match[2], 'base64')
         const maxBytes =
           metadata?.heatmap_fullpage === true
             ? MAX_HEATMAP_FULLPAGE_SCREENSHOT_BYTES
             : MAX_SCREENSHOT_BYTES
         if (buf.length <= maxBytes) {
-          const ext = match[1] === 'jpeg' || match[1] === 'jpg' ? 'jpg' : 'png'
+          const ext = imgType === 'jpeg' || imgType === 'jpg' ? 'jpg' : 'png'
           const key = `${test_id}/${tid}/${inserted.id}.${ext}`
           const { error: upErr } = await adminDb.storage
             .from(SCREENSHOT_BUCKET)
@@ -96,6 +103,8 @@ router.post('/', async (req, res) => {
     } catch (e) {
       console.error('Screenshot processing error:', e)
     }
+  } else {
+    screenshot = null // free reference
   }
 
   // Load test to determine type and goal definition
