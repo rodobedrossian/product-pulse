@@ -152,6 +152,8 @@ router.get('/:id/results', requireAuth, async (req, res) => {
         browser: p.browser || null,
         device_type: p.device_type || null,
         ip: p.ip || null,
+        country: p.country || null,
+        region: p.region || null,
         created_at: p.created_at,
         event_count: events.length,
         duration_ms,

@@ -178,6 +178,19 @@ function ObservationalResults({ data, testId, navigate }) {
   const referrers = (data.referrers || []).slice(0, 8)
   const maxReferrerCount = Math.max(1, ...referrers.map((r) => r.count))
 
+  const countryCounts = useMemo(() => {
+    const map = {}
+    sessions.forEach((s) => {
+      const key = s.country || 'Unknown'
+      map[key] = (map[key] || 0) + 1
+    })
+    return Object.entries(map)
+      .map(([country, count]) => ({ country, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
+  }, [sessions])
+  const maxCountryCount = Math.max(1, ...countryCounts.map((c) => c.count))
+
   const allEvents = useMemo(() => {
     const flat = []
     sessions.forEach((s) => {
@@ -349,6 +362,25 @@ function ObservationalResults({ data, testId, navigate }) {
                 </div>
               )}
             </div>
+
+            <div className="pp-card">
+              <h2 className="pp-section-title" style={{ marginBottom: '0.75rem' }}>Top countries</h2>
+              {countryCounts.length === 0 ? (
+                <p className="pp-muted" style={{ margin: 0 }}>No location data yet.</p>
+              ) : (
+                <div className="pp-mini-bars">
+                  {countryCounts.map((c) => (
+                    <div key={c.country} className="pp-mini-bar-row">
+                      <span className="pp-mini-bar-label">{c.country}</span>
+                      <div className="pp-mini-bar-track">
+                        <div className="pp-mini-bar-fill pp-mini-bar-fill--geo" style={{ width: `${(c.count / maxCountryCount) * 100}%` }} />
+                      </div>
+                      <span className="pp-mini-bar-value">{c.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="pp-card" style={{ marginBottom: '1rem' }}>
@@ -465,6 +497,7 @@ function ObservationalResults({ data, testId, navigate }) {
                     <tr>
                       <th>Session</th>
                       <th>Started</th>
+                      <th>Location</th>
                       <th>Device</th>
                       <th>Browser</th>
                       <th>Referrer</th>
@@ -479,10 +512,14 @@ function ObservationalResults({ data, testId, navigate }) {
                       if (s.referrer) {
                         try { ref = new URL(s.referrer).hostname } catch { ref = s.referrer }
                       }
+                      const location = [s.region, s.country].filter(Boolean).join(', ') || '—'
                       return (
                         <tr key={s.tid}>
                           <td style={{ fontWeight: 600 }}><code>{String(s.tid || '').slice(0, 8)}</code></td>
                           <td className="pp-muted">{new Date(s.created_at).toLocaleString()}</td>
+                          <td title={location !== '—' ? `${s.region || ''}${s.region && s.country ? ', ' : ''}${s.country || ''}` : ''}>
+                            {location}
+                          </td>
                           <td>{s.device_type || '—'}</td>
                           <td>{s.browser || '—'}</td>
                           <td title={s.referrer || ''}>{ref}</td>

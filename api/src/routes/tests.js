@@ -7,6 +7,7 @@ import db from '../db.js'
 import adminDb from '../db-admin.js'
 import { requireAuth } from '../middleware/auth.js'
 import { fetchAllPages } from '../lib/supabasePaginate.js'
+import { scheduleParticipantGeoUpdate } from '../lib/geoIp.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SNIPPET_PATH = join(__dirname, '../../snippet/protopulse.js')
@@ -134,6 +135,7 @@ router.post('/:id/auto-session', async (req, res) => {
 
   if (partErr) return res.status(500).json({ error: partErr.message })
   res.status(201).json({ tid })
+  scheduleParticipantGeoUpdate(adminDb, { test_id: id, tid, ip })
 })
 
 // GET /api/tests — list tests for the current team

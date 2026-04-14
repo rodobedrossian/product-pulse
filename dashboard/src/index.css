@@ -1160,6 +1160,12 @@ details.pp-details[open] summary::before {
   background: #7c3aed;
 }
 
+.pp-mini-bar-fill--geo {
+  height: 100%;
+  border-radius: 999px;
+  background: #0369a1;
+}
+
 .pp-interaction-label {
   font-size: 0.875rem;
   color: var(--color-text);
