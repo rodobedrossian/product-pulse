@@ -6,6 +6,9 @@ const router = Router()
 const BUCKET = 'session-replays'
 const MAX_CHUNKS = 600  // merge cap: ~30 min at 3s / ~10 min at 1s flush interval
 const SIGNED_URL_TTL = 3600  // 1 hour
+const MAX_MERGE_BYTES = 45 * 1024 * 1024  // 45 MB — Supabase storage object limit is ~50 MB
+let activeMerges = 0
+const MAX_CONCURRENT_MERGES = 2  // prevent simultaneous merges from exhausting heap
 
 function storageKey(testId, tid, partIndex) {
   return `${testId}/${tid}/part_${String(partIndex).padStart(4, '0')}.json`
@@ -110,6 +113,24 @@ router.post('/replay/complete', async (req, res) => {
 })
 
 async function mergeChunksInBackground(testId, tid) {
+  // Limit concurrent merges to avoid multiple large buffers in heap simultaneously
+  if (activeMerges >= MAX_CONCURRENT_MERGES) {
+    console.log(`Merge: deferred for tid=${tid} (${activeMerges} active merges)`)
+    await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 5000))
+    if (activeMerges >= MAX_CONCURRENT_MERGES) {
+      console.warn(`Merge: skipping tid=${tid} — too many concurrent merges`)
+      return
+    }
+  }
+  activeMerges++
+  try {
+    await _doMerge(testId, tid)
+  } finally {
+    activeMerges--
+  }
+}
+
+async function _doMerge(testId, tid) {
   const { data: files } = await adminDb.storage
     .from(BUCKET)
     .list(`${testId}/${tid}`, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
@@ -123,9 +144,12 @@ async function mergeChunksInBackground(testId, tid) {
 
   if (chunkFiles.length === 0) return
 
-  // Build the merged JSON by concatenating raw array contents — no JSON.parse
-  // so we never allocate all events as JavaScript objects
-  const parts = []
+  // Build merged JSON incrementally — never hold all chunks in memory simultaneously.
+  // We stream-build the string and abort early if it would exceed storage limits.
+  let merged = '{"events":['
+  let first = true
+  let actualChunks = 0
+
   for (const file of chunkFiles) {
     const key = `${testId}/${tid}/${file.name}`
     const { data, error } = await adminDb.storage.from(BUCKET).download(key)
@@ -133,19 +157,30 @@ async function mergeChunksInBackground(testId, tid) {
       console.warn(`Merge: skipping missing chunk ${file.name} for tid=${tid}`)
       continue
     }
+
     const text = await data.text()
     // Each chunk is a JSON array: [event, event, ...]
-    // Strip the outer brackets and collect the raw inner content
     const inner = text.trim().slice(1, -1).trim()
-    if (inner.length > 0) parts.push(inner)
+    if (inner.length === 0) continue
 
-    // Yield between chunks so GC can run
+    if (!first) merged += ','
+    merged += inner
+    first = false
+    actualChunks++
+
+    // Bail out if the merged content is already too large for Supabase storage
+    if (Buffer.byteLength(merged, 'utf8') > MAX_MERGE_BYTES) {
+      console.warn(`Merge: session for tid=${tid} exceeds ${MAX_MERGE_BYTES / 1024 / 1024}MB — skipping merge, chunks will be served individually`)
+      return  // merged goes out of scope → GC can reclaim
+    }
+
+    // Yield between chunks so GC can run and other requests can be handled
     await new Promise(resolve => setImmediate(resolve))
   }
 
-  if (parts.length === 0) return
+  if (actualChunks === 0) return
 
-  const merged = `{"events":[${parts.join(',')}],"chunk_count":${chunkFiles.length},"truncated":${chunkFiles.length === MAX_CHUNKS}}`
+  merged += `],"chunk_count":${actualChunks},"truncated":${chunkFiles.length === MAX_CHUNKS}}`
 
   const { error: uploadErr } = await adminDb.storage
     .from(BUCKET)
@@ -154,10 +189,12 @@ async function mergeChunksInBackground(testId, tid) {
       upsert: true
     })
 
+  merged = null  // release before any async operations complete
+
   if (uploadErr) {
     console.error(`Merge upload failed for tid=${tid}:`, uploadErr)
   } else {
-    console.log(`Merged ${chunkFiles.length} chunks for tid=${tid}`)
+    console.log(`Merged ${actualChunks} chunks for tid=${tid}`)
   }
 }
 
