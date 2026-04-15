@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api.js'
 import { getApiBase } from '../lib/publicEnv.js'
@@ -14,6 +14,44 @@ function formatMs(ms) {
 }
 
 const API_BASE = getApiBase()
+
+function DeleteParticipantModal({ participant, testId, onConfirm, onCancel }) {
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function handleDelete() {
+    setDeleting(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/tests/${testId}/participants/${participant.participant_id}`, { method: 'DELETE' })
+      onConfirm(participant.tid)
+    } catch (e) {
+      setError(e.message || 'Failed to delete participant')
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="pp-modal-overlay" onClick={onCancel}>
+      <div className="pp-modal" onClick={(e) => e.stopPropagation()}>
+        <h2 className="pp-modal-title">Remove participant?</h2>
+        <p className="pp-modal-body">
+          This will permanently delete <strong>{participant.name}</strong> and all their data —
+          events, session replay, and any recorded interactions. This cannot be undone.
+        </p>
+        {error && <p className="pp-modal-error">{error}</p>}
+        <div className="pp-modal-actions">
+          <button type="button" className="pp-btn pp-btn-secondary" onClick={onCancel} disabled={deleting}>
+            Cancel
+          </button>
+          <button type="button" className="pp-btn pp-btn-danger" onClick={handleDelete} disabled={deleting}>
+            {deleting ? 'Removing…' : 'Remove participant'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ScreenshotLightbox({ src, onClose }) {
   useEffect(() => {
@@ -645,15 +683,31 @@ function ObservationalResults({ data, testId, navigate }) {
 
 // ─── Single-goal results view ──────────────────────────────────────────────
 
-function SingleResults({ results, testId, navigate }) {
+function SingleResults({ results: initialResults, testId, navigate }) {
   const [expanded, setExpanded] = useState(null)
+  const [results, setResults] = useState(initialResults)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const id = testId
 
   const completed = results.filter((r) => r.completed).length
   const rate = results.length > 0 ? Math.round((completed / results.length) * 100) : 0
 
+  const handleDeleted = useCallback((tid) => {
+    setResults(prev => prev.filter(r => r.tid !== tid))
+    setConfirmDelete(null)
+    if (expanded === tid) setExpanded(null)
+  }, [expanded])
+
   return (
     <>
+      {confirmDelete && (
+        <DeleteParticipantModal
+          participant={confirmDelete}
+          testId={id}
+          onConfirm={handleDeleted}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
       <div className="pp-stat-grid">
         <StatCard label="Participants" value={results.length} />
         <StatCard label="Completed goal" value={`${completed} / ${results.length}`} />
@@ -680,6 +734,7 @@ function SingleResults({ results, testId, navigate }) {
                   <th>Events</th>
                   <th>Replay</th>
                   <th style={{ width: 48 }} aria-hidden />
+                  <th style={{ width: 40 }} aria-hidden />
                 </tr>
               </thead>
               <tbody>
@@ -721,10 +776,20 @@ function SingleResults({ results, testId, navigate }) {
                         )}
                       </td>
                       <td className="pp-chevron">{expanded === r.tid ? '▲' : '▼'}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="pp-btn-delete-participant"
+                          title="Remove participant"
+                          onClick={() => setConfirmDelete(r)}
+                        >
+                          ✕
+                        </button>
+                      </td>
                     </tr>
                     {expanded === r.tid && (
                       <tr className="pp-row-detail">
-                        <td colSpan={6}>
+                        <td colSpan={7}>
                           <EventTimeline events={r.events} testId={id} />
                         </td>
                       </tr>
@@ -844,16 +909,32 @@ function InsightsSummary({ testId }) {
   )
 }
 
-function ScenarioResults({ funnel, results, testId, navigate }) {
+function ScenarioResults({ funnel, results: initialResults, testId, navigate }) {
   const [expanded, setExpanded] = useState(null)
+  const [results, setResults] = useState(initialResults)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const id = testId
 
   const totalParticipants = results.length
   const allDone = results.filter((r) => r.completed).length
   const allDoneRate = totalParticipants > 0 ? Math.round((allDone / totalParticipants) * 100) : 0
 
+  const handleDeleted = useCallback((tid) => {
+    setResults(prev => prev.filter(r => r.tid !== tid))
+    setConfirmDelete(null)
+    if (expanded === tid) setExpanded(null)
+  }, [expanded])
+
   return (
     <>
+      {confirmDelete && (
+        <DeleteParticipantModal
+          participant={confirmDelete}
+          testId={id}
+          onConfirm={handleDeleted}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
       <div className="pp-stat-grid">
         <StatCard label="Participants" value={totalParticipants} />
         <StatCard label="Completed all steps" value={`${allDone} / ${totalParticipants}`} />
@@ -920,6 +1001,7 @@ function ScenarioResults({ funnel, results, testId, navigate }) {
                   <th>Events</th>
                   <th>Replay</th>
                   <th style={{ width: 48 }} aria-hidden />
+                  <th style={{ width: 40 }} aria-hidden />
                 </tr>
               </thead>
               <tbody>
@@ -963,10 +1045,20 @@ function ScenarioResults({ funnel, results, testId, navigate }) {
                         )}
                       </td>
                       <td className="pp-chevron">{expanded === r.tid ? '▲' : '▼'}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="pp-btn-delete-participant"
+                          title="Remove participant"
+                          onClick={() => setConfirmDelete(r)}
+                        >
+                          ✕
+                        </button>
+                      </td>
                     </tr>
                     {expanded === r.tid && (
                       <tr className="pp-row-detail">
-                        <td colSpan={6}>
+                        <td colSpan={7}>
                           <div className="pp-step-result-grid">
                             {r.steps.map((s) => (
                               <div

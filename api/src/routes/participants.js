@@ -80,6 +80,92 @@ router.patch('/:testId/participants/:participantId/tracking', requireAuth, async
   res.json(updated)
 })
 
+// DELETE /api/tests/:testId/participants/:participantId — permanently remove a participant
+// and all their associated data (events, step_results, session_results, replay, screenshots).
+router.delete('/:testId/participants/:participantId', requireAuth, async (req, res) => {
+  const { testId, participantId } = req.params
+
+  // Verify the test belongs to this team
+  let testQuery = db.from('tests').select('id').eq('id', testId)
+  if (req.teamId) testQuery = testQuery.eq('team_id', req.teamId)
+  const { data: test } = await testQuery.single()
+  if (!test) return res.status(404).json({ error: 'Test not found' })
+
+  // Get the participant (need tid + tester_id for cascade deletes)
+  const { data: participant, error: pErr } = await adminDb
+    .from('participants')
+    .select('id, tid, tester_id')
+    .eq('id', participantId)
+    .eq('test_id', testId)
+    .single()
+
+  if (pErr || !participant) return res.status(404).json({ error: 'Participant not found' })
+
+  const { tid, tester_id } = participant
+
+  // ── 1. Collect screenshot storage paths before deleting events ──
+  const { data: eventsWithScreenshots } = await adminDb
+    .from('events')
+    .select('screenshot_object_path')
+    .eq('test_id', testId)
+    .eq('tid', tid)
+    .not('screenshot_object_path', 'is', null)
+
+  // ── 2. Delete DB rows (order respects FK dependencies) ──
+  await adminDb.from('events').delete().eq('test_id', testId).eq('tid', tid)
+  await adminDb.from('step_results').delete().eq('test_id', testId).eq('tid', tid)
+  await adminDb.from('session_results').delete().eq('test_id', testId).eq('tid', tid)
+
+  // session_replays uses tid as unique key
+  await adminDb.from('session_replays').delete().eq('test_id', testId).eq('tid', tid)
+
+  // ── 3. Delete the participant row ──
+  await adminDb.from('participants').delete().eq('id', participantId)
+
+  // ── 4. Delete tester row if no other participants reference it ──
+  if (tester_id) {
+    const { count } = await adminDb
+      .from('participants')
+      .select('id', { count: 'exact', head: true })
+      .eq('tester_id', tester_id)
+    if (count === 0) {
+      await adminDb.from('testers').delete().eq('id', tester_id)
+    }
+  }
+
+  // ── 5. Delete storage objects (fire-and-forget; non-fatal) ──
+  setImmediate(async () => {
+    try {
+      // Session replay chunks + merged file
+      const REPLAY_BUCKET = 'session-replays'
+      const { data: replayFiles } = await adminDb.storage
+        .from(REPLAY_BUCKET)
+        .list(`${testId}/${tid}`, { limit: 1000 })
+      if (replayFiles?.length) {
+        const paths = replayFiles.map(f => `${testId}/${tid}/${f.name}`)
+        await adminDb.storage.from(REPLAY_BUCKET).remove(paths)
+      }
+    } catch (e) {
+      console.error(`[delete-participant] Replay storage cleanup failed for tid=${tid}:`, e?.message)
+    }
+
+    try {
+      // Event screenshots
+      const SCREENSHOT_BUCKET = 'event-screenshots'
+      const screenshotPaths = (eventsWithScreenshots || [])
+        .map(e => e.screenshot_object_path)
+        .filter(Boolean)
+      if (screenshotPaths.length > 0) {
+        await adminDb.storage.from(SCREENSHOT_BUCKET).remove(screenshotPaths)
+      }
+    } catch (e) {
+      console.error(`[delete-participant] Screenshot storage cleanup failed for tid=${tid}:`, e?.message)
+    }
+  })
+
+  res.status(200).json({ deleted: true, tid })
+})
+
 // GET /api/tests/:id/results — results per participant (protected)
 router.get('/:id/results', requireAuth, async (req, res) => {
   const { id } = req.params
