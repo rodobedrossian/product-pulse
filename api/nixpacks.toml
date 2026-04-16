@@ -2,3 +2,6 @@
 # ffmpeg is needed to split large audio files before sending to Whisper (25 MB limit)
 [phases.setup]
 aptPkgs = ["ffmpeg"]
+
+[phases.install]
+cacheDirectories = ["/root/.npm"]
