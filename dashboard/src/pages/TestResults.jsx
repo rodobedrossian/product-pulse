@@ -553,7 +553,7 @@ function ObservationalResults({ data, testId, navigate }) {
                       const location = [s.region, s.country].filter(Boolean).join(', ') || '—'
                       return (
                         <tr key={s.tid}>
-                          <td style={{ fontWeight: 600 }}><code>{String(s.tid || '').slice(0, 8)}</code></td>
+                          <td style={{ fontWeight: 600 }}><code style={{ fontSize: '0.7rem', letterSpacing: '-0.01em' }}>{String(s.tid || '')}</code></td>
                           <td className="pp-muted">{new Date(s.created_at).toLocaleString()}</td>
                           <td title={location !== '—' ? `${s.region || ''}${s.region && s.country ? ', ' : ''}${s.country || ''}` : ''}>
                             {location}
