@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "node scripts/download-geoip.mjs && node --max-old-space-size=380 src/index.js",
+    "startCommand": "sh -c \"node scripts/download-geoip.mjs & exec node src/index.js\"",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3

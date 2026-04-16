@@ -1,4 +1,5 @@
-FROM node:18-alpine
+# Node 20 matches @supabase/* engine requirements in package-lock.json
+FROM node:20-alpine
 
 # ffmpeg needed for audio splitting before Whisper upload
 RUN apk add --no-cache ffmpeg
@@ -15,4 +16,6 @@ COPY . .
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "node scripts/download-geoip.mjs && node --max-old-space-size=380 src/index.js"]
+# GeoIP download must not block /health: Railway probes as soon as the container starts.
+# Server listens immediately; MaxMind DB fills in shortly after (geo lookups wait on reader).
+CMD ["sh", "-c", "node scripts/download-geoip.mjs & exec node src/index.js"]
