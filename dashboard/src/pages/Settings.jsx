@@ -49,6 +49,12 @@ export default function Settings() {
   const [copiedToken, setCopiedToken] = useState(false)
   const [copiedConfig, setCopiedConfig] = useState(false)
 
+  // IP blocklist
+  const [blockedIps, setBlockedIps] = useState([])
+  const [newIp, setNewIp] = useState('')
+  const [ipError, setIpError] = useState(null)
+  const [ipSaving, setIpSaving] = useState(false)
+
   useEffect(() => {
     refreshTeam()
   }, [refreshTeam])
@@ -82,6 +88,13 @@ export default function Settings() {
       }
     }
     fetchTokens()
+  }, [])
+
+  // Load IP blocklist once on mount
+  useEffect(() => {
+    apiFetch('/api/teams/me/ip-blocklist')
+      .then((d) => setBlockedIps(d.blocked_ips || []))
+      .catch(() => {})
   }, [])
 
   const inviteUrl = inviteToken ? `${BASE_URL}/join/${inviteToken}` : ''
@@ -218,6 +231,35 @@ export default function Settings() {
     await navigator.clipboard.writeText(config)
     setCopiedConfig(true)
     setTimeout(() => setCopiedConfig(false), 2000)
+  }
+
+  async function saveBlockedIps(list) {
+    setIpSaving(true)
+    setIpError(null)
+    try {
+      const data = await apiFetch('/api/teams/me/ip-blocklist', {
+        method: 'PUT',
+        body: JSON.stringify({ blocked_ips: list })
+      })
+      setBlockedIps(data.blocked_ips)
+    } catch (err) {
+      setIpError(err.message)
+    } finally {
+      setIpSaving(false)
+    }
+  }
+
+  async function handleAddIp(e) {
+    e.preventDefault()
+    const ip = newIp.trim()
+    if (!ip) return
+    if (blockedIps.includes(ip)) { setNewIp(''); return }
+    await saveBlockedIps([...blockedIps, ip])
+    setNewIp('')
+  }
+
+  async function handleRemoveIp(ip) {
+    await saveBlockedIps(blockedIps.filter((x) => x !== ip))
   }
 
   function formatDate(iso) {
@@ -471,6 +513,59 @@ export default function Settings() {
                   <span className="pp-settings-dd">{team?.name || '—'}</span>
                 </div>
               </div>
+            )}
+          </div>
+
+          <div className="pp-card" style={{ padding: '1.35rem 1.5rem', marginBottom: '1.25rem' }}>
+            <h2 className="pp-page-title" style={{ fontSize: '1.15rem', marginBottom: '0.35rem' }}>
+              IP blocklist
+            </h2>
+            <p className="pp-muted" style={{ marginBottom: '1.25rem', fontSize: '0.9375rem', maxWidth: '42rem' }}>
+              Participants from these IPs are hidden from all Observe &amp; Learn results. Use this to exclude your own team's traffic.
+            </p>
+
+            {ipError && <p className="pp-auth-error" style={{ marginBottom: '1rem' }}>{ipError}</p>}
+
+            <form onSubmit={handleAddIp} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: blockedIps.length ? '1.25rem' : 0, flexWrap: 'wrap' }}>
+              <div className="pp-field" style={{ flex: '1 1 14rem', marginBottom: 0 }}>
+                <label className="pp-label" htmlFor="new-blocked-ip">IP address</label>
+                <input
+                  id="new-blocked-ip"
+                  type="text"
+                  className="pp-input"
+                  placeholder="e.g. 192.168.1.1"
+                  value={newIp}
+                  onChange={(e) => setNewIp(e.target.value)}
+                  maxLength={45}
+                  spellCheck={false}
+                />
+              </div>
+              <button type="submit" className="secondary" disabled={ipSaving || !newIp.trim()} style={{ flexShrink: 0 }}>
+                {ipSaving ? 'Saving…' : 'Add IP'}
+              </button>
+            </form>
+
+            {blockedIps.length > 0 && (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {blockedIps.map((ip, i) => (
+                  <li key={ip} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    gap: '1rem', padding: '0.55rem 0',
+                    borderBottom: i < blockedIps.length - 1 ? '1px solid var(--color-border)' : 'none'
+                  }}>
+                    <code style={{ fontSize: '0.875rem' }}>{ip}</code>
+                    <button
+                      type="button"
+                      className="secondary"
+                      style={{ fontSize: '0.8125rem', padding: '0.25rem 0.65rem' }}
+                      onClick={() => handleRemoveIp(ip)}
+                      disabled={ipSaving}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 

@@ -115,6 +115,35 @@ router.get('/teams/me', requireAuth, async (req, res) => {
   })
 })
 
+// GET /api/teams/me/ip-blocklist
+router.get('/teams/me/ip-blocklist', requireAuth, async (req, res) => {
+  if (!req.teamId) return res.json({ blocked_ips: [] })
+  const { data } = await adminDb.from('teams').select('blocked_ips').eq('id', req.teamId).single()
+  res.json({ blocked_ips: data?.blocked_ips || [] })
+})
+
+// PUT /api/teams/me/ip-blocklist — replace the entire list
+router.put('/teams/me/ip-blocklist', requireAuth, async (req, res) => {
+  if (!req.teamId) return res.status(400).json({ error: 'You are not on a team' })
+  const { blocked_ips } = req.body
+  if (!Array.isArray(blocked_ips)) return res.status(400).json({ error: 'blocked_ips must be an array' })
+
+  // Basic IP validation (IPv4 and IPv6, allow CIDR-less only)
+  const valid = blocked_ips.every((ip) => typeof ip === 'string' && ip.trim().length > 0 && ip.trim().length <= 45)
+  if (!valid) return res.status(400).json({ error: 'Invalid IP address in list' })
+
+  const cleaned = [...new Set(blocked_ips.map((ip) => ip.trim()))]
+  const { data, error } = await adminDb
+    .from('teams')
+    .update({ blocked_ips: cleaned })
+    .eq('id', req.teamId)
+    .select('blocked_ips')
+    .single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ blocked_ips: data.blocked_ips })
+})
+
 // PATCH /api/teams/me — rename current user's team
 router.patch('/teams/me', requireAuth, async (req, res) => {
   const { name } = req.body

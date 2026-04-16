@@ -217,13 +217,29 @@ router.get('/:id/results', requireAuth, async (req, res) => {
 
   // ─── Observational results ─────────────────────────────────────────────────
   if (test.test_type === 'observational') {
+    // Load IP blocklist for this team
+    let blockedIps = []
+    if (req.teamId) {
+      const { data: teamRow } = await adminDb
+        .from('teams')
+        .select('blocked_ips')
+        .eq('id', req.teamId)
+        .single()
+      blockedIps = teamRow?.blocked_ips || []
+    }
+
+    const blockedSet = new Set(blockedIps)
+    const filteredParticipants = blockedSet.size > 0
+      ? participants.filter((p) => !p.ip || !blockedSet.has(p.ip))
+      : participants
+
     const { data: testers } = await db
       .from('testers')
       .select('id, tester_key, first_seen, last_seen, session_count')
       .eq('test_id', id)
       .order('first_seen', { ascending: false })
 
-    const results = participants.map((p) => {
+    const results = filteredParticipants.map((p) => {
       const events = eventsByTid[p.tid] || []
       const startTs = events.length ? new Date(events[0].timestamp).getTime() : null
       const endTs = events.length ? new Date(events[events.length - 1].timestamp).getTime() : null
