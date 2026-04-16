@@ -175,6 +175,146 @@ function median(values) {
     : sorted[mid]
 }
 
+function NamedEventsTaxonomy({ testId }) {
+  const [definitions, setDefinitions] = useState(null) // null = loading, [] = empty
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
+
+  useEffect(() => {
+    apiFetch(`/api/tests/${testId}/event-definitions`)
+      .then((data) => setDefinitions(Array.isArray(data) ? data : []))
+      .catch(() => setDefinitions([]))
+  }, [testId])
+
+  async function handleGenerate() {
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const result = await apiFetch(`/api/tests/${testId}/event-definitions/generate`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(60000),
+      })
+      setDefinitions(Array.isArray(result) ? result : [])
+    } catch (e) {
+      setGenError(e.message || 'Generation failed')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  async function handleSaveName(def) {
+    const trimmed = editName.trim()
+    if (!trimmed || trimmed === def.name) { setEditingId(null); return }
+    try {
+      await apiFetch(`/api/tests/${testId}/event-definitions/${def.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: trimmed }),
+      })
+      setDefinitions((prev) => prev.map((d) => d.id === def.id ? { ...d, name: trimmed } : d))
+    } catch { /* silent — revert */ }
+    setEditingId(null)
+  }
+
+  async function handleDelete(defId) {
+    try {
+      await apiFetch(`/api/tests/${testId}/event-definitions/${defId}`, { method: 'DELETE' })
+      setDefinitions((prev) => prev.filter((d) => d.id !== defId))
+    } catch { /* silent */ }
+  }
+
+  const hasDefinitions = definitions && definitions.length > 0
+
+  return (
+    <div className="pp-card pp-table-card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1rem' }}>
+      <div style={{ padding: '1rem 1.35rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+        <div>
+          <h2 className="pp-section-title" style={{ margin: 0 }}>Named events</h2>
+          <p className="pp-muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>AI-generated semantic event definitions matched against raw interaction data</p>
+        </div>
+        <button
+          type="button"
+          className="pp-btn pp-btn-secondary"
+          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+          onClick={handleGenerate}
+          disabled={generating}
+        >
+          {generating ? 'Generating…' : hasDefinitions ? '↺ Regenerate' : '✦ Generate'}
+        </button>
+      </div>
+      {genError && (
+        <p className="pp-muted" style={{ margin: '0 1.35rem 0.75rem', color: 'var(--color-danger, #dc2626)', fontSize: '0.8125rem' }}>{genError}</p>
+      )}
+      {definitions === null ? (
+        <p className="pp-muted" style={{ margin: '0 1.35rem 1rem', fontSize: '0.8125rem' }}>Loading…</p>
+      ) : definitions.length === 0 ? (
+        <p className="pp-muted" style={{ margin: '0 1.35rem 1rem', fontSize: '0.8125rem' }}>
+          No named events yet. Click <strong>✦ Generate</strong> to auto-detect semantic events from your interaction data.
+        </p>
+      ) : (
+        <div className="pp-table-wrap" style={{ margin: 0, padding: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Event name</th>
+                <th>Type</th>
+                <th style={{ textAlign: 'right' }}>Count</th>
+                <th style={{ width: 64 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {definitions.map((def) => (
+                <tr key={def.id}>
+                  <td>
+                    {editingId === def.id ? (
+                      <input
+                        style={{ width: '100%', font: 'inherit', padding: '2px 4px', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 4 }}
+                        value={editName}
+                        autoFocus
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(def); if (e.key === 'Escape') setEditingId(null) }}
+                        onBlur={() => handleSaveName(def)}
+                      />
+                    ) : (
+                      <span
+                        style={{ cursor: 'pointer' }}
+                        title="Double-click to rename"
+                        onDoubleClick={() => { setEditingId(def.id); setEditName(def.name) }}
+                      >
+                        {def.name}
+                      </span>
+                    )}
+                    {def.description && <span className="pp-muted" style={{ display: 'block', fontSize: '0.75rem', marginTop: 2 }}>{def.description}</span>}
+                  </td>
+                  <td><span className={`pp-interaction-type pp-interaction-type--${def.type}`}>{def.type}</span></td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{def.count ?? 0}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      className="pp-btn pp-btn-secondary"
+                      style={{ padding: '2px 8px', fontSize: '0.75rem', marginRight: 4 }}
+                      onClick={() => { setEditingId(def.id); setEditName(def.name) }}
+                      title="Rename"
+                    >✎</button>
+                    <button
+                      type="button"
+                      className="pp-btn pp-btn-danger"
+                      style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                      onClick={() => handleDelete(def.id)}
+                      title="Delete"
+                    >✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ObservationalResults({ data, testId, navigate }) {
   const [tab, setTab] = useState('overview')
   const [sessionDevice, setSessionDevice] = useState('all')
@@ -488,6 +628,8 @@ function ObservationalResults({ data, testId, navigate }) {
               </div>
             )}
           </div>
+
+          <NamedEventsTaxonomy testId={testId} />
         </>
       )}
 

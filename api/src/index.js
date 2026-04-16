@@ -12,6 +12,7 @@ import mcpTokensRouter from './routes/mcpTokens.js'
 import participantRecordingsRouter from './routes/participant-recordings.js'
 import transcriptsRouter from './routes/transcripts.js'
 import testInsightsRouter from './routes/test-insights.js'
+import eventDefinitionsRouter from './routes/eventDefinitions.js'
 import desktopRouter from './routes/desktop.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -56,6 +57,7 @@ app.use('/api/tests', participantsRouter)
 app.use('/api/tests', participantRecordingsRouter)
 app.use('/api/tests', transcriptsRouter)
 app.use('/api/tests', testInsightsRouter)
+app.use('/api/tests', eventDefinitionsRouter)
 app.use('/api/events', eventsRouter)
 app.use('/api', replayRouter)
 app.use('/api', screenshotRouter)
