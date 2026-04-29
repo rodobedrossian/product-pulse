@@ -504,7 +504,14 @@ export async function scanRepo({ token, repoFullName, branch = 'main' }) {
   const packageJsonFiles = allFiles.filter((f) => f.path === 'package.json' || f.path === 'api/package.json')
   const routeFiles       = allFiles.filter((f) => isRouteFile(f.path)).slice(0, 60)
   const migrationFiles   = allFiles.filter((f) => isMigrationFile(f.path)).slice(0, 40)
-  const componentFiles   = allFiles.filter((f) => isComponentFile(f.path)).slice(0, 80)
+  // Pages first so feature grouping works even when shadcn/ui fills the limit
+  const componentFiles   = allFiles
+    .filter((f) => isComponentFile(f.path))
+    .sort((a, b) => {
+      const rank = (p) => /\/(pages|views|screens)\//.test(p) ? 0 : /\/(features|modules|sections)\//.test(p) ? 1 : 2
+      return rank(a.path) - rank(b.path)
+    })
+    .slice(0, 80)
   const edgeFunctions    = allFiles.filter((f) => isEdgeFunctionFile(f.path)).slice(0, 20)
   // Supabase .from() table detection: scan src/ files not already in other buckets
   const alreadyIncluded  = new Set([...routeFiles, ...componentFiles].map((f) => f.path))
@@ -516,6 +523,8 @@ export async function scanRepo({ token, repoFullName, branch = 'main' }) {
     ...packageJsonFiles, ...routeFiles, ...migrationFiles, ...componentFiles,
     ...edgeFunctions, ...supabaseFiles
   ])].slice(0, MAX_FILES)
+
+  console.log(`[scanner] ${repoFullName}: tree=${allFiles.length} route=${routeFiles.length} migration=${migrationFiles.length} component=${componentFiles.length} edge=${edgeFunctions.length} supabase=${supabaseFiles.length} → fetching ${relevant.length} files`)
 
   // 3. Fetch content in batches
   const contents = await fetchBatch(
@@ -575,6 +584,8 @@ export async function scanRepo({ token, repoFullName, branch = 'main' }) {
   const uniqueComponents = components.filter((c, i, arr) =>
     arr.findIndex((x) => x.name === c.name && x.path === c.path) === i
   )
+
+  console.log(`[scanner] parsed: endpoints=${uniqueEndpoints.length} tables=${uniqueTables.length} components=${uniqueComponents.length}`)
 
   // 6. Derive features from regex results (used as fallback if no AI)
   const regexFeatures = deriveFeatures(uniqueComponents, uniqueEndpoints)
