@@ -13,6 +13,7 @@ import participantRecordingsRouter from './routes/participant-recordings.js'
 import transcriptsRouter from './routes/transcripts.js'
 import testInsightsRouter from './routes/test-insights.js'
 import eventDefinitionsRouter from './routes/eventDefinitions.js'
+import githubRouter from './routes/github.js'
 import desktopRouter from './routes/desktop.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -42,6 +43,9 @@ app.use((req, res, next) => {
 // Serve the snippet as a static file
 app.use('/snippet', express.static(join(__dirname, '../snippet')))
 
+// GitHub webhook needs raw body for HMAC verification — must come before express.json()
+app.use('/api/github/webhook', express.raw({ type: '*/*' }))
+
 // Higher body limits: replay chunks ~8 MB; events are JSON-only by default (no screenshots)
 app.use('/api/replay', express.json({ limit: '8mb' }))
 const eventsJsonLimit =
@@ -63,6 +67,7 @@ app.use('/api', replayRouter)
 app.use('/api', screenshotRouter)
 app.use('/api', teamsRouter)
 app.use('/api/mcp', mcpTokensRouter)
+app.use('/api/github', githubRouter)
 app.use('/api/desktop', desktopRouter)
 
 app.listen(PORT, '0.0.0.0', () => {

@@ -55,6 +55,14 @@ export default function Settings() {
   const [ipError, setIpError] = useState(null)
   const [ipSaving, setIpSaving] = useState(false)
 
+  // GitHub connection
+  const [githubStatus, setGithubStatus] = useState(null) // null=loading
+  const [githubRepos, setGithubRepos] = useState(null)
+  const [githubRepo, setGithubRepo] = useState('')
+  const [githubConnecting, setGithubConnecting] = useState(false)
+  const [githubIndexing, setGithubIndexing] = useState(false)
+  const [githubError, setGithubError] = useState(null)
+
   useEffect(() => {
     refreshTeam()
   }, [refreshTeam])
@@ -95,6 +103,13 @@ export default function Settings() {
     apiFetch('/api/teams/me/ip-blocklist')
       .then((d) => setBlockedIps(d.blocked_ips || []))
       .catch(() => {})
+  }, [])
+
+  // Load GitHub status once on mount
+  useEffect(() => {
+    apiFetch('/api/github/status')
+      .then(setGithubStatus)
+      .catch(() => setGithubStatus({ connected: false }))
   }, [])
 
   const inviteUrl = inviteToken ? `${BASE_URL}/join/${inviteToken}` : ''
@@ -260,6 +275,75 @@ export default function Settings() {
 
   async function handleRemoveIp(ip) {
     await saveBlockedIps(blockedIps.filter((x) => x !== ip))
+  }
+
+  async function handleGithubConnect() {
+    setGithubConnecting(true)
+    setGithubError(null)
+    try {
+      const { url } = await apiFetch('/api/github/auth-url')
+      const popup = window.open(url, 'github-oauth', 'width=620,height=720,left=200,top=100')
+      const timer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(timer)
+          setGithubConnecting(false)
+          apiFetch('/api/github/status').then(setGithubStatus).catch(() => {})
+        }
+      }, 600)
+    } catch (e) {
+      setGithubError(e.message)
+      setGithubConnecting(false)
+    }
+  }
+
+  async function handleGithubDisconnect() {
+    await apiFetch('/api/github/disconnect', { method: 'DELETE' }).catch(() => {})
+    setGithubStatus({ connected: false })
+    setGithubRepos(null)
+    setGithubRepo('')
+  }
+
+  async function handleGithubLoadRepos() {
+    setGithubError(null)
+    try {
+      const repos = await apiFetch('/api/github/repos')
+      setGithubRepos(repos)
+    } catch (e) {
+      setGithubError(e.message)
+    }
+  }
+
+  async function handleGithubSelectRepo() {
+    if (!githubRepo) return
+    setGithubIndexing(true)
+    setGithubError(null)
+    try {
+      await apiFetch('/api/github/connect-repo', {
+        method: 'POST',
+        body: JSON.stringify({ repo_full_name: githubRepo }),
+        signal: AbortSignal.timeout(120000)
+      })
+      const status = await apiFetch('/api/github/status')
+      setGithubStatus(status)
+    } catch (e) {
+      setGithubError(e.message)
+    } finally {
+      setGithubIndexing(false)
+    }
+  }
+
+  async function handleGithubReindex() {
+    setGithubIndexing(true)
+    setGithubError(null)
+    try {
+      await apiFetch('/api/github/index', { method: 'POST', signal: AbortSignal.timeout(120000) })
+      const status = await apiFetch('/api/github/status')
+      setGithubStatus(status)
+    } catch (e) {
+      setGithubError(e.message)
+    } finally {
+      setGithubIndexing(false)
+    }
   }
 
   function formatDate(iso) {
@@ -511,6 +595,76 @@ export default function Settings() {
                 <div className="pp-settings-readonly-row">
                   <span className="pp-settings-dt">Team name</span>
                   <span className="pp-settings-dd">{team?.name || '—'}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── GitHub connection ────────────────────────────────────────────── */}
+          <div className="pp-card" style={{ padding: '1.35rem 1.5rem', marginBottom: '1.25rem' }}>
+            <h2 className="pp-page-title" style={{ fontSize: '1.15rem', marginBottom: '0.35rem' }}>
+              GitHub repository
+            </h2>
+            <p className="pp-muted" style={{ marginBottom: '1rem', fontSize: '0.9375rem', maxWidth: '42rem' }}>
+              Connect a repo to auto-generate your <a href="/product-map" style={{ color: 'inherit' }}>Product Map</a> — API endpoints, database schema, UI components, and tech stack.
+            </p>
+
+            {githubError && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>{githubError}</p>}
+
+            {githubStatus === null && <p className="pp-muted" style={{ fontSize: '0.875rem' }}>Loading…</p>}
+
+            {githubStatus !== null && !githubStatus.connected && (
+              <button type="button" className="secondary" onClick={handleGithubConnect} disabled={githubConnecting}>
+                {githubConnecting ? 'Redirecting…' : 'Connect GitHub'}
+              </button>
+            )}
+
+            {githubStatus?.connected && !githubStatus.map && (
+              <div>
+                <p className="pp-muted" style={{ fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+                  Connected as <strong>@{githubStatus.github_login}</strong> — select a repo to index.
+                </p>
+                {!githubRepos ? (
+                  <button type="button" className="secondary" onClick={handleGithubLoadRepos}>
+                    Load repositories
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div className="pp-field" style={{ flex: '1 1 16rem', marginBottom: 0 }}>
+                      <label className="pp-label" htmlFor="gh-repo-select">Repository</label>
+                      <select id="gh-repo-select" className="pp-input" value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)}>
+                        <option value="">Select…</option>
+                        {githubRepos.map((r) => (
+                          <option key={r.full_name} value={r.full_name}>{r.full_name}{r.private ? ' 🔒' : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button type="button" className="primary" onClick={handleGithubSelectRepo} disabled={!githubRepo || githubIndexing}>
+                      {githubIndexing ? 'Indexing…' : 'Select & index'}
+                    </button>
+                    <button type="button" className="secondary" onClick={handleGithubDisconnect}>Disconnect</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {githubStatus?.connected && githubStatus.map && (
+              <div>
+                <div className="pp-settings-readonly" style={{ marginBottom: '0.75rem' }}>
+                  <div className="pp-settings-readonly-row">
+                    <span className="pp-settings-dt">Repository</span>
+                    <span className="pp-settings-dd"><strong>{githubStatus.map.repo_full_name}</strong></span>
+                  </div>
+                  <div className="pp-settings-readonly-row">
+                    <span className="pp-settings-dt">Last indexed</span>
+                    <span className="pp-settings-dd">{githubStatus.map.last_indexed_at ? new Date(githubStatus.map.last_indexed_at).toLocaleString() : '—'}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button type="button" className="secondary" onClick={handleGithubReindex} disabled={githubIndexing}>
+                    {githubIndexing ? 'Indexing…' : '↺ Re-index'}
+                  </button>
+                  <button type="button" className="secondary" onClick={handleGithubDisconnect}>Disconnect</button>
                 </div>
               </div>
             )}

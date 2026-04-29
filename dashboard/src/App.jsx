@@ -18,6 +18,7 @@ import FeatureSessionReplay from './pages/FeatureSessionReplay.jsx'
 import FeatureGoalTracking from './pages/FeatureGoalTracking.jsx'
 import FeatureAI from './pages/FeatureAI.jsx'
 import DesktopAppDownloadButton from './components/DesktopAppDownloadButton.jsx'
+import ProductMap from './pages/ProductMap.jsx'
 
 function Shell() {
   const { pathname } = useLocation()
@@ -27,8 +28,10 @@ function Shell() {
   const isNew = pathname === '/tests/new'
   const docsActive = pathname === '/docs'
   const settingsActive = pathname === '/settings'
+  const productMapActive = pathname === '/product-map' || pathname.startsWith('/product-map/')
   const testsActive =
     !settingsActive &&
+    !productMapActive &&
     (pathname === '/tests' || (pathname.startsWith('/tests/') && segment && segment !== 'new'))
 
   async function handleSignOut() {
@@ -50,6 +53,9 @@ function Shell() {
             </Link>
             <Link to="/tests/new" className={isNew ? 'pp-nav-active' : undefined}>
               New test
+            </Link>
+            <Link to="/product-map" className={productMapActive ? 'pp-nav-active' : undefined}>
+              Map
             </Link>
             <Link to="/docs" className={docsActive ? 'pp-nav-active' : undefined}>
               Docs
@@ -79,6 +85,7 @@ function Shell() {
           <Route path="/tests/:id/heatmap" element={<Heatmap />} />
           <Route path="/tests/:id/participants/:participantId/transcript" element={<Transcript />} />
           <Route path="/tests/:id/replay/:tid" element={<SessionReplay />} />
+          <Route path="/product-map" element={<ProductMap />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/docs" element={<Docs />} />
         </Routes>
