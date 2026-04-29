@@ -286,6 +286,9 @@ function MapView({ map, githubLogin, onReindex, onDisconnect }) {
                       <td><MethodBadge method={e.method} /></td>
                       <td>
                         <code style={{ fontSize: '0.8125rem' }}>{e.path}</code>
+                        {e.component && (
+                          <span className="pp-muted" style={{ marginLeft: '0.5rem', fontSize: '0.775rem' }}>→ {e.component}</span>
+                        )}
                         {e.description && (
                           <p className="pp-muted" style={{ margin: '0.15rem 0 0', fontSize: '0.775rem', lineHeight: 1.4 }}>{e.description}</p>
                         )}

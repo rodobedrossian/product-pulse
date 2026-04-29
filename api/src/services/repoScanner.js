@@ -119,6 +119,17 @@ function parseEndpoints(content, filePath) {
     endpoints.push({ method, path: m[2], file: filePath, framework: 'nestjs' })
   }
 
+  // ── React Router: <Route path="/foo" element={<Bar />} /> ───────────────────
+  // Handles both self-closing and open tags, catches the component name too
+  const rrRe = /<Route\b[^>]*\bpath=["']([^"'*][^"']*)["'][^>]*(?:element=\{<(\w+)|>)/g
+  while ((m = rrRe.exec(content)) !== null) {
+    const path = m[1]
+    const component = m[2] || null
+    if (path && path !== '*') {
+      endpoints.push({ method: 'GET', path, file: filePath, framework: 'react-router', component })
+    }
+  }
+
   // Deduplicate within this file
   return endpoints.filter((e, i, arr) =>
     arr.findIndex((x) => x.method === e.method && x.path === e.path) === i
@@ -416,6 +427,8 @@ function isRouteFile(path) {
     /\/pages\/api\/.*\.(js|ts)$/.test(path) ||
     // Server / API entry points at root or in src/
     /^(src\/)?(index|server|app|main)\.(js|ts)$/.test(path) ||
+    // React Router: App.tsx / App.jsx (contains <Route> definitions)
+    /^(src\/)?App\.(tsx|jsx|ts|js)$/.test(path) ||
     // Files directly in an api/ or server/ directory (one level deep, not nested)
     /^(src\/)?api\/[^/]+\.(js|ts)$/.test(path) ||
     /^(src\/)?server\/[^/]+\.(js|ts)$/.test(path)
@@ -423,7 +436,17 @@ function isRouteFile(path) {
 }
 
 function isMigrationFile(path) {
-  return /\/(migrations?|db|schema)\/.*\.sql$/.test(path) || /\/schema\.prisma$/.test(path)
+  return (
+    /\/(migrations?|db|schema)\/.*\.sql$/.test(path) ||
+    /\/schema\.prisma$/.test(path) ||
+    // Supabase project: supabase/migrations/*.sql
+    /^supabase\/migrations\/.*\.sql$/.test(path)
+  )
+}
+
+function isEdgeFunctionFile(path) {
+  // Supabase Edge Functions: supabase/functions/{name}/index.ts
+  return /^supabase\/functions\/[^/]+\/index\.(ts|js)$/.test(path)
 }
 
 function isComponentFile(path) {
@@ -437,16 +460,20 @@ function isComponentFile(path) {
   )
 }
 
-// ── Supabase table files: any TS/JS that's not a test and not a config ────────
+// ── Supabase table files: any TS/JS/TSX/JSX in src/ that's not a test ────────
+// Broad: Supabase .from() calls appear in hooks, contexts, components, pages, lib, etc.
 
 function isSupabaseFile(path) {
   return (
     /\.(js|ts|jsx|tsx)$/.test(path) &&
     !path.includes('.test.') &&
     !path.includes('.spec.') &&
+    !path.includes('.stories.') &&
+    !path.includes('.config.') &&
+    !path.endsWith('.d.ts') &&
     !isSkippedPath(path) &&
-    // Likely to have .from() calls
-    /\/(lib|utils|services?|hooks|api|routes?|server|db|supabase)\//.test(path)
+    // Any file under src/ or the project root TS/JS files
+    /^src\//.test(path)
   )
 }
 
@@ -478,15 +505,16 @@ export async function scanRepo({ token, repoFullName, branch = 'main' }) {
   const routeFiles       = allFiles.filter((f) => isRouteFile(f.path)).slice(0, 60)
   const migrationFiles   = allFiles.filter((f) => isMigrationFile(f.path)).slice(0, 40)
   const componentFiles   = allFiles.filter((f) => isComponentFile(f.path)).slice(0, 80)
-  // Extra: TS/JS files likely to contain Supabase .from() calls (for table detection)
+  const edgeFunctions    = allFiles.filter((f) => isEdgeFunctionFile(f.path)).slice(0, 20)
+  // Supabase .from() table detection: scan src/ files not already in other buckets
+  const alreadyIncluded  = new Set([...routeFiles, ...componentFiles].map((f) => f.path))
   const supabaseFiles    = allFiles.filter((f) =>
-    isSupabaseFile(f.path) &&
-    !routeFiles.find((r) => r.path === f.path) &&
-    !componentFiles.find((c) => c.path === f.path)
-  ).slice(0, 30)
+    isSupabaseFile(f.path) && !alreadyIncluded.has(f.path)
+  ).slice(0, 40)
 
   const relevant = [...new Set([
-    ...packageJsonFiles, ...routeFiles, ...migrationFiles, ...componentFiles, ...supabaseFiles
+    ...packageJsonFiles, ...routeFiles, ...migrationFiles, ...componentFiles,
+    ...edgeFunctions, ...supabaseFiles
   ])].slice(0, MAX_FILES)
 
   // 3. Fetch content in batches
@@ -522,11 +550,17 @@ export async function scanRepo({ token, repoFullName, branch = 'main' }) {
       // Routes may contain Supabase calls
       db_tables.push(...parseDbTables(content, path))
     }
+    if (isEdgeFunctionFile(path)) {
+      // Supabase Edge Functions — treat as API endpoints (Deno/TypeScript)
+      const fnName = path.split('/').slice(-2)[0] // supabase/functions/{name}/index.ts
+      endpoints.push({ method: 'POST', path: `/functions/v1/${fnName}`, file: path, framework: 'supabase-edge' })
+      db_tables.push(...parseDbTables(content, path))
+    }
     if (isComponentFile(path)) {
       components.push(...parseComponents(content, path))
       db_tables.push(...parseDbTables(content, path))
     }
-    if (isSupabaseFile(path)) {
+    if (isSupabaseFile(path) && !isRouteFile(path) && !isComponentFile(path)) {
       db_tables.push(...parseDbTables(content, path))
     }
   }
