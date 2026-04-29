@@ -283,13 +283,26 @@ export default function Settings() {
     try {
       const { url } = await apiFetch('/api/github/auth-url')
       const popup = window.open(url, 'github-oauth', 'width=620,height=720,left=200,top=100')
-      const timer = setInterval(() => {
+
+      function onMessage(event) {
+        if (event.data?.type !== 'github_connected') return
+        window.removeEventListener('message', onMessage)
+        clearInterval(pollTimer)
+        setGithubConnecting(false)
+        const { error: ghErr } = event.data.payload || {}
+        if (ghErr && ghErr !== 'cancelled') setGithubError(`GitHub: ${ghErr}`)
+        else apiFetch('/api/github/status').then(setGithubStatus).catch(() => {})
+      }
+      window.addEventListener('message', onMessage)
+
+      const pollTimer = setInterval(() => {
         if (!popup || popup.closed) {
-          clearInterval(timer)
+          clearInterval(pollTimer)
+          window.removeEventListener('message', onMessage)
           setGithubConnecting(false)
           apiFetch('/api/github/status').then(setGithubStatus).catch(() => {})
         }
-      }, 600)
+      }, 800)
     } catch (e) {
       setGithubError(e.message)
       setGithubConnecting(false)

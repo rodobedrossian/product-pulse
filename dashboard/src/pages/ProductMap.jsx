@@ -420,26 +420,37 @@ export default function ProductMap() {
   }, [])
 
   useEffect(() => {
-    // If popup returned connected=1, close self (this is the popup)
-    if (searchParams.get('connected') === '1' && window.opener) {
-      window.close()
-      return
-    }
     fetchStatus()
-  }, [fetchStatus, searchParams])
+  }, [fetchStatus])
 
   async function handleConnect() {
     setConnecting(true)
+    setError(null)
     try {
       const { url } = await apiFetch('/api/github/auth-url')
       const popup = window.open(url, 'github-oauth', 'width=620,height=720,left=200,top=100')
-      const timer = setInterval(() => {
+
+      // Listen for postMessage from the callback HTML page
+      function onMessage(event) {
+        if (event.data?.type !== 'github_connected') return
+        window.removeEventListener('message', onMessage)
+        clearInterval(pollTimer)
+        setConnecting(false)
+        const { error: ghErr } = event.data.payload || {}
+        if (ghErr && ghErr !== 'cancelled') setError(`GitHub: ${ghErr}`)
+        else fetchStatus()
+      }
+      window.addEventListener('message', onMessage)
+
+      // Fallback: if popup closes without postMessage (e.g. user closes manually)
+      const pollTimer = setInterval(() => {
         if (!popup || popup.closed) {
-          clearInterval(timer)
+          clearInterval(pollTimer)
+          window.removeEventListener('message', onMessage)
           setConnecting(false)
           fetchStatus()
         }
-      }, 600)
+      }, 800)
     } catch (e) {
       setError(e.message)
       setConnecting(false)

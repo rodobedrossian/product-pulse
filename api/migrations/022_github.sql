@@ -1,19 +1,20 @@
--- GitHub OAuth connections (one per team)
+-- GitHub App connections (one per team)
+-- Uses GitHub App installation_id instead of OAuth user tokens,
+-- so users can grant access to specific repositories only.
 CREATE TABLE IF NOT EXISTS public.github_connections (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id          UUID        NOT NULL UNIQUE REFERENCES public.teams(id) ON DELETE CASCADE,
-  github_user_id   BIGINT      NOT NULL,
-  github_login     TEXT        NOT NULL,
-  github_token     TEXT        NOT NULL,
-  repo_full_name   TEXT,
-  webhook_id       BIGINT,
-  webhook_secret   TEXT,
+  installation_id  BIGINT      NOT NULL,
+  github_login     TEXT,                          -- account that installed the app (for display)
+  repo_full_name   TEXT,                          -- repo currently indexed
+  webhook_id       BIGINT,                        -- GitHub webhook ID (for cleanup on disconnect)
+  webhook_secret   TEXT,                          -- per-connection HMAC secret
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_github_connections_team_id ON public.github_connections(team_id);
-CREATE INDEX IF NOT EXISTS idx_github_connections_repo ON public.github_connections(repo_full_name);
+CREATE INDEX IF NOT EXISTS idx_github_connections_repo    ON public.github_connections(repo_full_name);
 
 ALTER TABLE public.github_connections ENABLE ROW LEVEL SECURITY;
 
