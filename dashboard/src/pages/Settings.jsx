@@ -622,7 +622,16 @@ export default function Settings() {
               Connect a repo to auto-generate your <a href="/product-map" style={{ color: 'inherit' }}>Product Map</a> — API endpoints, database schema, UI components, and tech stack.
             </p>
 
-            {githubError && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>{githubError}</p>}
+            {githubError && (
+              <p className="pp-auth-error" style={{ marginBottom: '0.75rem' }}>
+                {githubError}
+                <button
+                  type="button"
+                  onClick={() => setGithubError(null)}
+                  style={{ marginLeft: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: '0.9em', opacity: 0.7 }}
+                >✕</button>
+              </p>
+            )}
 
             {githubStatus === null && <p className="pp-muted" style={{ fontSize: '0.875rem' }}>Loading…</p>}
 

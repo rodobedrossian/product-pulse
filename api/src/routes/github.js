@@ -133,6 +133,7 @@ async function upsertProductMap(teamId, repoFullName, scanResult) {
         db_tables: scanResult.db_tables,
         tech_stack: scanResult.tech_stack,
         raw_file_count: scanResult.raw_file_count,
+        ai_summary: scanResult.ai_summary ?? null,
         last_indexed_at: new Date().toISOString()
       },
       { onConflict: 'team_id' }
@@ -210,7 +211,10 @@ router.get('/callback', async (req, res) => {
       { onConflict: 'team_id' }
     )
 
-  if (dbErr) return popupResponse(res, { error: dbErr.message })
+  if (dbErr) {
+    console.error('[github] callback upsert failed:', dbErr.message)
+    return popupResponse(res, { error: dbErr.message })
+  }
 
   return popupResponse(res, { connected: true, github_login: githubLogin })
 })

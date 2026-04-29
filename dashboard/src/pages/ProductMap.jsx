@@ -65,7 +65,7 @@ function ConnectPrompt({ onConnect, connecting }) {
         {connecting ? 'Redirecting…' : 'Connect GitHub →'}
       </button>
       <p className="pp-muted" style={{ marginTop: '1rem', fontSize: '0.8125rem' }}>
-        Read-only access · Uses GitHub OAuth
+        Read-only access · Uses GitHub App
       </p>
     </div>
   )
@@ -203,6 +203,12 @@ function MapView({ map, githubLogin, onReindex, onDisconnect }) {
       {/* Overview */}
       {tab === 'overview' && (
         <>
+          {map.ai_summary && (
+            <div className="pp-card" style={{ padding: '1rem 1.35rem', marginBottom: '1.25rem', borderLeft: '3px solid var(--color-accent, #c0543c)', display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+              <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>✦</span>
+              <p style={{ margin: 0, fontSize: '0.9375rem', lineHeight: 1.55 }}>{map.ai_summary}</p>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
             {[
               { label: 'Endpoints', value: map.endpoints?.length || 0, icon: '⚡' },
@@ -226,13 +232,16 @@ function MapView({ map, githubLogin, onReindex, onDisconnect }) {
                   <div key={f.name} style={{
                     padding: '0.4rem 0.85rem', borderRadius: 8, fontSize: '0.875rem',
                     background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                    fontWeight: 600
+                    fontWeight: 600, maxWidth: f.description ? '22rem' : undefined
                   }}>
-                    {f.name}
+                    <span>{f.name}</span>
                     {f.endpoint_count > 0 && (
                       <span className="pp-muted" style={{ fontWeight: 400, marginLeft: '0.4rem' }}>
                         {f.endpoint_count} endpoints
                       </span>
+                    )}
+                    {f.description && (
+                      <p className="pp-muted" style={{ margin: '0.2rem 0 0', fontWeight: 400, fontSize: '0.775rem', lineHeight: 1.4 }}>{f.description}</p>
                     )}
                   </div>
                 ))}
@@ -275,7 +284,12 @@ function MapView({ map, githubLogin, onReindex, onDisconnect }) {
                   {map.endpoints.map((e, i) => (
                     <tr key={i}>
                       <td><MethodBadge method={e.method} /></td>
-                      <td><code style={{ fontSize: '0.8125rem' }}>{e.path}</code></td>
+                      <td>
+                        <code style={{ fontSize: '0.8125rem' }}>{e.path}</code>
+                        {e.description && (
+                          <p className="pp-muted" style={{ margin: '0.15rem 0 0', fontSize: '0.775rem', lineHeight: 1.4 }}>{e.description}</p>
+                        )}
+                      </td>
                       <td className="pp-muted" style={{ fontSize: '0.8125rem' }}>{e.file}</td>
                       <td className="pp-muted" style={{ fontSize: '0.8125rem' }}>{e.framework}</td>
                     </tr>
